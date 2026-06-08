@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============ Design Tokens（來源：design_handoff/styles.css 的 :root） ============
+   雙色系由 --primary（我，薰衣草紫）與 --pink（夥伴）驅動，其餘色用 color-mix() 推導。
+   想換 theme：只改下面兩行 --primary / --pink，全站連動。 */
+:root {
+  --primary: #7a6cf0;
+  --pink: #f08fb0;
+
+  --primary-deep: color-mix(in srgb, var(--primary) 80%, #1e1340);
+  --primary-soft: color-mix(in srgb, var(--primary) 15%, #fff);
+  --primary-softer: color-mix(in srgb, var(--primary) 7%, #fff);
+  --pink-deep: color-mix(in srgb, var(--pink) 76%, #3a1426);
+  --pink-soft: color-mix(in srgb, var(--pink) 18%, #fff);
+
+  --bg: color-mix(in srgb, var(--primary) 6%, #fbfafd);
+  --surface: #ffffff;
+  --surface-2: color-mix(in srgb, var(--primary) 4%, #fff);
+  --line: color-mix(in srgb, var(--primary) 9%, #f1eff5);
+  --line-strong: color-mix(in srgb, var(--primary) 16%, #e9e6ef);
+
+  --ink: #231d33;
+  --ink-2: #5b5470;
+  --ink-3: #938cab;
+  --ink-4: #bdb7cf;
+
+  --ok: #3bb98f;
+  --ok-soft: #e3f6ee;
+  --warn: #f0a04b;
+  --warn-soft: #fdf0e0;
+  --danger: #e8607a;
+
+  --map-bg: #eef2ee;
+  --map-water: #bfe0e8;
+  --map-park: #cfe7c6;
+  --map-road: #ffffff;
+  --map-road-minor: #f3f1ea;
+  --map-block: #e7e3da;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+
+  --sh-1: 0 1px 2px rgba(35, 29, 51, 0.05), 0 1px 3px rgba(35, 29, 51, 0.04);
+  --sh-2: 0 4px 14px rgba(60, 46, 120, 0.08), 0 1px 3px rgba(60, 46, 120, 0.05);
+  --sh-3: 0 12px 34px rgba(60, 46, 120, 0.16), 0 4px 10px rgba(60, 46, 120, 0.08);
+  --sh-pop: 0 18px 50px rgba(40, 28, 90, 0.28);
+
+  --ff: 'Noto Sans TC', 'PingFang TC', -apple-system, sans-serif;
+  --ff-round: 'Quicksand', 'Noto Sans TC', sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--ff);
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 數字/Logo 用圓體，含等寬數字 */
+  .num {
+    font-family: var(--ff-round);
+    font-feature-settings: 'tnum';
+  }
+}
+
+@layer components {
+  /* 圖片佔位：135° 斜紋底（對應 prototype 的 .ph / .warm / .cool）。
+     真實封面之後接圖片來源，階段 1 尚無上傳，故用佔位。 */
+  .ph {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #9b90c2;
+    background: repeating-linear-gradient(135deg, #efeaf8 0 11px, #e7e0f4 11px 22px);
+  }
+  .ph-warm {
+    color: #c98aa3;
+    background: repeating-linear-gradient(135deg, #fdeaf0 0 11px, #f9dde7 11px 22px);
+  }
+  .ph-cool {
+    color: #7faab3;
+    background: repeating-linear-gradient(135deg, #e6f1f3 0 11px, #d7e9ee 11px 22px);
+  }
+  .ph-label {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 3px 8px;
+    border-radius: 7px;
+  }
+}

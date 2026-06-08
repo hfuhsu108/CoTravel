@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>同行 · 旅遊共編 App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  /* desktop demo layout */
+  #stage{ gap:46px; }
+  .deskpanel{ width:236px; flex:none; color:#3d3360; font-family:var(--ff); }
+  .deskpanel .dp-title{ font-family:var(--ff-round); font-weight:700; font-size:19px; color:#2e2550; }
+  .deskpanel .dp-sub{ font-size:13px; color:#7a6f9c; margin-top:2px; margin-bottom:22px; }
+  .dp-group{ margin-bottom:20px; }
+  .dp-label{ display:block; font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#9a90bd; margin-bottom:10px; }
+  .dp-btns{ display:flex; flex-direction:column; gap:8px; }
+  .dp-btns button{ text-align:left; border:1px solid #e0daf0; background:rgba(255,255,255,.7); border-radius:12px; padding:10px 13px;
+    font-family:var(--ff); font-weight:700; font-size:13.5px; color:#574d78; cursor:pointer; transition:all .15s; }
+  .dp-btns button:hover{ background:#fff; }
+  .dp-btns button.on{ background:var(--primary); color:#fff; border-color:var(--primary); box-shadow:0 6px 16px rgba(122,108,240,.3); }
+  .dp-hint{ font-size:11.5px; line-height:1.6; color:#8b81ab; max-width:230px; }
+  @media (max-width:900px){
+    .deskpanel{ display:none; }
+    #stage{ gap:0; }
+  }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="Map.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="screens-auth-list.jsx"></script>
+  <script type="text/babel" src="screens-main.jsx"></script>
+  <script type="text/babel" src="screens-docs-packing.jsx"></script>
+  <script type="text/babel" src="App.jsx"></script>
+
+  <script>
+    // scale the phone to fit shorter viewports
+    function fitPhone(){
+      var phone = document.querySelector('.phone');
+      if(!phone) return;
+      var margin = 40;
+      var sH = (window.innerHeight - margin) / 852;
+      var wAvail = window.innerWidth > 900 ? window.innerWidth - 236 - 46 - 40 : window.innerWidth - 16;
+      var sW = wAvail / 393;
+      var s = Math.min(1, sH, sW);
+      phone.style.transform = 'scale(' + s + ')';
+    }
+    var _t;
+    new MutationObserver(function(){ clearTimeout(_t); _t=setTimeout(fitPhone,60); })
+      .observe(document.getElementById('root'),{childList:true,subtree:true});
+    window.addEventListener('resize', fitPhone);
+    setTimeout(fitPhone, 400);
+  </script>
+</body>
+</html>
