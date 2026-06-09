@@ -45,8 +45,36 @@ create table if not exists days (
   trip_id uuid references trips(id) on delete cascade,
   date date not null,
   day_index int not null,                 -- Day1=1, Day2=2...
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (trip_id, day_index)             -- 防併發重複建立（同趟同一天唯一）
 );
+
+-- 既有資料庫自我修復（新裝者已由上方 inline 帶入唯一鍵；此段讓 schema.sql 在舊庫重跑時，
+-- 清掉因併發/StrictMode 重複建立的 day 列再補唯一鍵。皆冪等，可安全重跑）。
+-- 1) 把指向「重複日」的 items 重新指到保留日（每組 trip_id+day_index 取最早建立者）
+update items i
+set day_id = k.keep_id
+from (
+  select id,
+         first_value(id) over (partition by trip_id, day_index order by created_at, id) as keep_id
+  from days
+) k
+where i.day_id = k.id and k.id <> k.keep_id;
+-- 2) 刪除重複日（保留每組最早者）
+delete from days d
+using (
+  select id,
+         first_value(id) over (partition by trip_id, day_index order by created_at, id) as keep_id
+  from days
+) k
+where d.id = k.id and k.id <> k.keep_id;
+-- 3) 補唯一鍵（若尚未存在）
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'days_trip_id_day_index_key') then
+    alter table days add constraint days_trip_id_day_index_key unique (trip_id, day_index);
+  end if;
+end $$;
 
 -- 行程項目（定點 / 區域 / 書籤）
 create table if not exists items (

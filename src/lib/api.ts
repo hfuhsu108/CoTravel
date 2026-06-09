@@ -49,6 +49,35 @@ export async function listMyTrips(): Promise<TripWithMembers[]> {
   }))
 }
 
+// 單一旅程 + 成員（主畫面頂列頭像對用）。RLS 確保非成員查不到 → 回傳 null。
+export async function getTripWithMembers(tripId: string): Promise<TripWithMembers | null> {
+  const { data, error } = await supabase
+    .from('trips')
+    .select('*, members:trip_members(trip_id, user_id, role, joined_at)')
+    .eq('id', tripId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const trip = data as Trip & { members: TripMember[] }
+
+  // trip_members 與 profiles 無直接 FK（皆指向 auth.users），故 profiles 另撈再 stitch（同 listMyTrips）
+  const userIds = [...new Set(trip.members.map((m) => m.user_id))]
+  const profileById = new Map<string, Profile>()
+  if (userIds.length > 0) {
+    const { data: profiles, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, created_at')
+      .in('id', userIds)
+    if (pErr) throw pErr
+    for (const p of (profiles ?? []) as Profile[]) profileById.set(p.id, p)
+  }
+
+  return {
+    ...trip,
+    members: trip.members.map((m) => ({ ...m, profile: profileById.get(m.user_id) ?? null })),
+  }
+}
+
 // 建立旅程（走 RPC：原子產生邀請碼 + 加自己為 owner）
 export async function createTrip(input: {
   name: string

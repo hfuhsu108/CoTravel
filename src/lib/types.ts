@@ -37,3 +37,55 @@ export interface TripMemberWithProfile extends TripMember {
 export interface TripWithMembers extends Trip {
   members: TripMemberWithProfile[]
 }
+
+// ---- 行程核心（階段 2；對應 docs/03 的 days / items / area_candidates） ----
+
+export type ItemType = 'point' | 'area'
+// bookmark = 想去、未排入某天（day_id 為 null）；scheduled = 已排入某天
+export type ItemStatus = 'bookmark' | 'scheduled'
+
+export interface Day {
+  id: string
+  trip_id: string
+  date: string // 'YYYY-MM-DD'
+  day_index: number // Day1=1, Day2=2...
+  created_at: string
+}
+
+export interface Item {
+  id: string
+  trip_id: string
+  day_id: string | null // null = 書籤（尚未排入）
+  type: ItemType
+  status: ItemStatus
+  name: string
+  lat: number | null
+  lng: number | null
+  google_place_id: string | null
+  photo_url: string | null
+  scheduled_time: string | null // 'HH:MM[:SS]' 造訪時間（定點常用）
+  time_slot: string | null // 區域時段，如 '下午'
+  radius_m: number | null // 區域圓形半徑（type=area 時）
+  category: string | null // 自由標記，如 '逛街'
+  order_index: number // 同一天內排序
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface AreaCandidate {
+  id: string
+  item_id: string // 必為 type=area 的 item
+  name: string
+  lat: number | null
+  lng: number | null
+  google_place_id: string | null
+  chosen: boolean // 當天決定去這間
+  notes: string | null
+  created_at: string
+}
+
+// 區域 item + 其候選店家（區域卡展開 / 區域詳情用）
+export interface ItemWithCandidates extends Item {
+  candidates?: AreaCandidate[]
+}
