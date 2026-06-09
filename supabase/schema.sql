@@ -132,12 +132,25 @@ create table if not exists transports (
   mode text not null,                     -- walk | transit | drive | bike | custom
   duration_min int,
   distance_m int,
-  custom_label text,
-  route_polyline text,
+  custom_label text,                      -- 自定義時用：'新幹線' '包車'
+  cost_text text,                         -- 費用顯示字串，如 '¥240'（幣別多樣，純顯示；階段 3 新增）
+  route_polyline text,                    -- Google 路線編碼（可選快取，畫在主地圖）
   document_id uuid references documents(id) on delete set null,
   notes text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (from_item_id, to_item_id)       -- 一段交通一列（以相鄰對為鍵 upsert，防併發重複）
 );
+
+-- 既有資料庫自我修復（新裝者已由上方 inline 帶入；此段讓 schema.sql 在舊庫重跑時補上階段 3 的
+-- cost_text 欄與 (from_item_id,to_item_id) 唯一鍵。皆冪等，可安全重跑）。
+alter table transports add column if not exists cost_text text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'transports_from_item_id_to_item_id_key') then
+    alter table transports add constraint transports_from_item_id_to_item_id_key
+      unique (from_item_id, to_item_id);
+  end if;
+end $$;
 
 -- 行李清單（依個人分）
 create table if not exists packing_items (

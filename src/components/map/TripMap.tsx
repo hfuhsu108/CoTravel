@@ -5,15 +5,16 @@ import {
   Map as GoogleMap,
   useMap,
 } from '@vis.gl/react-google-maps'
-import type { Item } from '../../lib/types'
+import type { Item, Transport } from '../../lib/types'
 import { env } from '../../lib/env'
 import Icon from '../Icon'
 import MapCircle from './MapCircle'
-import RoutePolyline from './RoutePolyline'
+import DayRoutes, { type RouteStop } from './DayRoutes'
 
 interface TripMapProps {
   dayItems: Item[] // 當天 scheduled（point + area），已依 order_index 排序
   bookmarks: Item[] // status=bookmark（跨天都顯示）
+  transportByPair: Map<string, Transport> // 相鄰段交通（畫真實路線用），key `${fromId}|${toId}`
   selectedItemId: string | null
   showRoute: boolean
   onSelectItem: (item: Item) => void
@@ -27,6 +28,7 @@ const DEFAULT_ZOOM = 9
 export default function TripMap({
   dayItems,
   bookmarks,
+  transportByPair,
   selectedItemId,
   showRoute,
   onSelectItem,
@@ -36,13 +38,13 @@ export default function TripMap({
   const areas = useMemo(() => dayItems.filter((i) => i.type === 'area'), [dayItems])
   // 編號只算定點，依 order_index 順序給 1,2,3…（區域不給編號）
   const numberOf = useMemo(() => new Map(points.map((p, i) => [p.id, i + 1])), [points])
-  // 路線：當天定點依序連線（已過濾有座標者）
-  const routePoints = useMemo(
+  // 路線停靠點：當天所有項目（含區域圓心）依序、且有座標者——交通段對應相鄰兩項目
+  const stops = useMemo<RouteStop[]>(
     () =>
-      points
-        .filter((p) => p.lat != null && p.lng != null)
-        .map((p) => ({ lat: p.lat as number, lng: p.lng as number })),
-    [points],
+      dayItems
+        .filter((i) => i.lat != null && i.lng != null)
+        .map((i) => ({ id: i.id, lat: i.lat as number, lng: i.lng as number })),
+    [dayItems],
   )
 
   const fitCoords = useMemo(
@@ -67,7 +69,7 @@ export default function TripMap({
       }}
     >
       <FitBounds coords={fitCoords} />
-      <RoutePolyline points={routePoints} visible={showRoute} />
+      <DayRoutes stops={stops} transportByPair={transportByPair} visible={showRoute} />
 
       {/* 區域：地理圓圈 + 中央標籤 */}
       {areas.map(

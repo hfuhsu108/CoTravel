@@ -29,10 +29,11 @@ import {
   updateItem,
   type ItemPatch,
 } from '../../lib/itinerary'
+import { listTransports, removeTransport, upsertTransport } from '../../lib/transports'
 import { errMessage } from '../../lib/errMessage'
 import { env } from '../../lib/env'
 import { formatRange } from '../../lib/date'
-import type { AreaCandidate, Day, Item, TripWithMembers } from '../../lib/types'
+import type { AreaCandidate, Day, Item, Transport, TripWithMembers } from '../../lib/types'
 import Icon from '../../components/Icon'
 import Sheet from '../../components/ui/Sheet'
 import TripMap from '../../components/map/TripMap'
@@ -41,6 +42,7 @@ import DayTabs from '../../components/map/DayTabs'
 import DaySidebar from '../../components/map/DaySidebar'
 import MarkerPopup from '../../components/map/MarkerPopup'
 import DetailSheet from '../../components/map/detail/DetailSheet'
+import TransitDetail, { type TransitSavePayload } from '../../components/map/detail/TransitDetail'
 import PlaceSearch, { type PickKind, type PickedPlace } from '../../components/map/PlaceSearch'
 import AddAreaSheet from '../../components/map/AddAreaSheet'
 
@@ -67,6 +69,7 @@ export default function MapTab() {
   const [days, setDays] = useState<Day[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [candidates, setCandidates] = useState<AreaCandidate[]>([])
+  const [transports, setTransports] = useState<Transport[]>([])
   const [currentDayId, setCurrentDayId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [showRoute, setShowRoute] = useState(true)
@@ -82,6 +85,8 @@ export default function MapTab() {
   const [areaMode, setAreaMode] = useState(false)
   const [pendingAreaCenter, setPendingAreaCenter] = useState<google.maps.LatLngLiteral | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  // 開啟中的交通編輯（相鄰 from→to 兩項目 id）
+  const [transitEdit, setTransitEdit] = useState<{ fromId: string; toId: string } | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -97,11 +102,13 @@ export default function MapTab() {
         const its = await listItems(tripId)
         const areaIds = its.filter((i) => i.type === 'area').map((i) => i.id)
         const cands = await listCandidatesByItems(areaIds)
+        const trs = await listTransports(tripId)
         if (!active) return
         setTrip(t)
         setDays(d)
         setItems(its)
         setCandidates(cands)
+        setTransports(trs)
         const today = todayStr()
         setCurrentDayId(d.find((x) => x.date === today)?.id ?? d[0]?.id ?? null)
       } catch (e) {
@@ -126,6 +133,13 @@ export default function MapTab() {
     return m
   }, [candidates])
 
+  // 交通以相鄰對 (from→to) 查表：重排後不再相鄰者查不到、顯示為「加交通」（不破壞 DB 資料）
+  const transportByPair = useMemo(() => {
+    const m = new Map<string, Transport>()
+    for (const t of transports) m.set(`${t.from_item_id}|${t.to_item_id}`, t)
+    return m
+  }, [transports])
+
   const currentDay = days.find((d) => d.id === currentDayId) ?? null
   const dayItems = useMemo(
     () =>
@@ -138,6 +152,13 @@ export default function MapTab() {
 
   const detailItem = items.find((i) => i.id === detailItemId) ?? null
   const popupItem = items.find((i) => i.id === popupItemId) ?? null
+
+  // 交通編輯：兩端項目 + 既有設定（由相鄰對推導）
+  const transitFrom = transitEdit ? (items.find((i) => i.id === transitEdit.fromId) ?? null) : null
+  const transitTo = transitEdit ? (items.find((i) => i.id === transitEdit.toId) ?? null) : null
+  const editingTransport = transitEdit
+    ? (transportByPair.get(`${transitEdit.fromId}|${transitEdit.toId}`) ?? null)
+    : null
 
   // 以當天/書籤第一個座標當搜尋偏好（提升在地相關性）
   const mapBias = useMemo<google.maps.LatLngLiteral | undefined>(() => {
@@ -205,6 +226,8 @@ export default function MapTab() {
       await removeItem(id)
       setItems((its) => its.filter((i) => i.id !== id))
       setCandidates((cs) => cs.filter((c) => c.item_id !== id))
+      // DB 端 transports FK on delete cascade 會清掉；本地同步移除避免殘留查表
+      setTransports((ts) => ts.filter((t) => t.from_item_id !== id && t.to_item_id !== id))
       setDetailItemId(null)
       setPopupItemId(null)
       setSelectedItemId(null)
@@ -244,6 +267,28 @@ export default function MapTab() {
       await removeCandidate(id)
     } catch (e) {
       setCandidates(prev)
+      setError(errMessage(e))
+    }
+  }
+
+  // 交通：以相鄰對 upsert（一段一列），回寫本地 state（依 id 取代/新增）。
+  // 失敗時 throw 給 TransitDetail 顯示 inline 錯誤（不在此吞掉）。
+  async function handleSaveTransport(fromId: string, toId: string, payload: TransitSavePayload) {
+    const saved = await upsertTransport({
+      trip_id: tripId,
+      from_item_id: fromId,
+      to_item_id: toId,
+      ...payload,
+    })
+    setTransports((ts) => [...ts.filter((t) => t.id !== saved.id), saved])
+  }
+
+  async function handleRemoveTransport(id: string) {
+    try {
+      await removeTransport(id)
+      setTransports((ts) => ts.filter((t) => t.id !== id))
+      setTransitEdit(null)
+    } catch (e) {
       setError(errMessage(e))
     }
   }
@@ -338,6 +383,7 @@ export default function MapTab() {
         <TripMap
           dayItems={dayItems}
           bookmarks={bookmarks}
+          transportByPair={transportByPair}
           selectedItemId={selectedItemId}
           showRoute={showRoute}
           onSelectItem={(it) => {
@@ -401,6 +447,7 @@ export default function MapTab() {
               day={currentDay}
               items={dayItems}
               candidatesByItem={candidatesByItem}
+              transportByPair={transportByPair}
               selectedItemId={selectedItemId}
               showRoute={showRoute}
               onToggleRoute={() => setShowRoute((r) => !r)}
@@ -409,6 +456,11 @@ export default function MapTab() {
                 setSelectedItemId(it.id)
                 setDetailItemId(it.id)
                 setPopupItemId(null)
+              }}
+              onSelectTransport={(from, to) => {
+                setTransitEdit({ fromId: from.id, toId: to.id })
+                setPopupItemId(null)
+                setSelectedItemId(null)
               }}
               onToggleCandidate={handleToggleCandidate}
               onAddItem={() => setAddMenuOpen(true)}
@@ -463,6 +515,20 @@ export default function MapTab() {
             onToggleCandidate={handleToggleCandidate}
             onRemoveCandidate={handleRemoveCandidate}
             onAddCandidate={() => setSearch({ mode: 'candidate', targetItemId: detailItem.id })}
+          />
+        )}
+
+        {/* 交通詳情（畫面 3 TransitDetail）：相鄰 from→to 兩項目間的交通 */}
+        {transitEdit && transitFrom && transitTo && (
+          <TransitDetail
+            fromItem={transitFrom}
+            toItem={transitTo}
+            transport={editingTransport}
+            onClose={() => setTransitEdit(null)}
+            onSave={(payload) => handleSaveTransport(transitEdit.fromId, transitEdit.toId, payload)}
+            onRemove={() =>
+              editingTransport ? handleRemoveTransport(editingTransport.id) : Promise.resolve()
+            }
           />
         )}
 

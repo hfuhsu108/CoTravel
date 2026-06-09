@@ -1,20 +1,24 @@
+import { Fragment } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import type { AreaCandidate, Day, Item } from '../../lib/types'
+import type { AreaCandidate, Day, Item, Transport } from '../../lib/types'
 import { formatDayLabel } from '../../lib/date'
 import Icon from '../Icon'
 import PlaceCard from './cards/PlaceCard'
 import AreaCard from './cards/AreaCard'
 import SortableCard from './SortableCard'
+import TransitRow from './TransitRow'
 
 interface DaySidebarProps {
   day: Day | null
   items: Item[] // 當天 scheduled，已依 order_index 排序
   candidatesByItem: Map<string, AreaCandidate[]>
+  transportByPair: Map<string, Transport> // key `${fromId}|${toId}`
   selectedItemId: string | null
   showRoute: boolean
   onToggleRoute: () => void
   onCollapse: () => void
   onSelectItem: (item: Item) => void
+  onSelectTransport: (from: Item, to: Item, transport: Transport | null) => void
   onToggleCandidate: (candidate: AreaCandidate) => void
   onAddItem?: () => void
 }
@@ -25,11 +29,13 @@ export default function DaySidebar({
   day,
   items,
   candidatesByItem,
+  transportByPair,
   selectedItemId,
   showRoute,
   onToggleRoute,
   onCollapse,
   onSelectItem,
+  onSelectTransport,
   onToggleCandidate,
   onAddItem,
 }: DaySidebarProps) {
@@ -92,26 +98,43 @@ export default function DaySidebar({
         ) : (
           <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col gap-2">
-              {items.map((it) => (
-                <SortableCard key={it.id} id={it.id}>
-                  {it.type === 'area' ? (
-                    <AreaCard
-                      item={it}
-                      candidates={candidatesByItem.get(it.id) ?? []}
-                      selected={selectedItemId === it.id}
-                      onSelect={() => onSelectItem(it)}
-                      onToggleCandidate={onToggleCandidate}
-                    />
-                  ) : (
-                    <PlaceCard
-                      item={it}
-                      n={numberOf.get(it.id) ?? 0}
-                      selected={selectedItemId === it.id}
-                      onSelect={() => onSelectItem(it)}
-                    />
-                  )}
-                </SortableCard>
-              ))}
+              {items.map((it, idx) => {
+                // 相鄰下一項：兩端都有座標才在中間插交通列（對應 transports 的 from→to）
+                const next = items[idx + 1]
+                const hasCoord = (i: Item) => i.lat != null && i.lng != null
+                const showTransit = !!next && hasCoord(it) && hasCoord(next)
+                const transport = showTransit
+                  ? (transportByPair.get(`${it.id}|${next.id}`) ?? null)
+                  : null
+                return (
+                  <Fragment key={it.id}>
+                    <SortableCard id={it.id}>
+                      {it.type === 'area' ? (
+                        <AreaCard
+                          item={it}
+                          candidates={candidatesByItem.get(it.id) ?? []}
+                          selected={selectedItemId === it.id}
+                          onSelect={() => onSelectItem(it)}
+                          onToggleCandidate={onToggleCandidate}
+                        />
+                      ) : (
+                        <PlaceCard
+                          item={it}
+                          n={numberOf.get(it.id) ?? 0}
+                          selected={selectedItemId === it.id}
+                          onSelect={() => onSelectItem(it)}
+                        />
+                      )}
+                    </SortableCard>
+                    {showTransit && (
+                      <TransitRow
+                        transport={transport}
+                        onClick={() => onSelectTransport(it, next, transport)}
+                      />
+                    )}
+                  </Fragment>
+                )
+              })}
             </div>
           </SortableContext>
         )}

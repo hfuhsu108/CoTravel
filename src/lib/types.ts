@@ -89,3 +89,25 @@ export interface AreaCandidate {
 export interface ItemWithCandidates extends Item {
   candidates?: AreaCandidate[]
 }
+
+// ---- 交通（階段 3；對應 docs/03 的 transports） ----
+
+// walk/transit/drive 走 Google Directions；custom 為自填（新幹線/包車/渡輪…）。
+// bike 保留於 enum 但本階段 UI 未提供。
+export type TransportMode = 'walk' | 'transit' | 'drive' | 'bike' | 'custom'
+
+export interface Transport {
+  id: string
+  trip_id: string
+  from_item_id: string
+  to_item_id: string
+  mode: TransportMode
+  duration_min: number | null
+  distance_m: number | null
+  custom_label: string | null // 自定義方式名稱，如 '新幹線'
+  cost_text: string | null // 費用顯示字串，如 '¥240'
+  route_polyline: string | null // Google encoded polyline（畫真實路線用）
+  document_id: string | null // 連結車票等文件（文件選取器留階段 4）
+  notes: string | null
+  created_at: string
+}
