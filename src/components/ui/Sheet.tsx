@@ -6,9 +6,11 @@ interface SheetProps {
   onClose: () => void
   children: ReactNode
   className?: string
+  // 疊在詳情全頁浮層（z-[72]）之上時設 true，用更高 z 避免被遮
+  stacked?: boolean
 }
 
-export default function Sheet({ onClose, children, className = '' }: SheetProps) {
+export default function Sheet({ onClose, children, className = '', stacked = false }: SheetProps) {
   // Esc 關閉（鍵盤可用性）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -21,14 +23,14 @@ export default function Sheet({ onClose, children, className = '' }: SheetProps)
   return (
     <>
       <div
-        className="absolute inset-0 z-[70] animate-fade bg-[rgba(28,20,52,0.42)]"
+        className={`absolute inset-0 animate-fade bg-[rgba(28,20,52,0.42)] ${stacked ? 'z-[80]' : 'z-[70]'}`}
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         role="dialog"
         aria-modal="true"
-        className={`absolute inset-x-0 bottom-0 z-[71] flex max-h-[92%] flex-col rounded-t-[28px] bg-surface shadow-3 animate-slideup ${className}`}
+        className={`absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col rounded-t-[28px] bg-surface shadow-3 animate-slideup ${stacked ? 'z-[81]' : 'z-[71]'} ${className}`}
       >
         <div className="mx-auto mb-1 mt-[11px] h-[5px] w-[42px] flex-none rounded-full bg-line-strong" />
         {children}

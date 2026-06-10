@@ -20,7 +20,6 @@ export interface UpsertTransportInput {
   custom_label?: string | null
   cost_text?: string | null
   route_polyline?: string | null
-  document_id?: string | null
   notes?: string | null
 }
 
@@ -40,7 +39,6 @@ export async function upsertTransport(input: UpsertTransportInput): Promise<Tran
         custom_label: input.custom_label ?? null,
         cost_text: input.cost_text ?? null,
         route_polyline: input.route_polyline ?? null,
-        document_id: input.document_id ?? null,
         notes: input.notes ?? null,
       },
       { onConflict: 'from_item_id,to_item_id' },

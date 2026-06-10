@@ -1,7 +1,11 @@
-import type { AreaCandidate, Day, Item, TripMemberWithProfile } from '../../../lib/types'
+import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import type { AreaCandidate, Day, Document, Item, TripMemberWithProfile } from '../../../lib/types'
 import type { ItemPatch } from '../../../lib/itinerary'
+import { listDocumentsByItem } from '../../../lib/documents'
 import Icon from '../../Icon'
 import Avatar from '../../Avatar'
+import DocLinkSheet from '../../docs/DocLinkSheet'
 import PlaceDetail from './PlaceDetail'
 import AreaDetail from './AreaDetail'
 
@@ -38,8 +42,37 @@ export default function DetailSheet({
   onRemoveCandidate,
   onAddCandidate,
 }: DetailSheetProps) {
+  const { tripId = '' } = useParams()
   const author = members.find((m) => m.user_id === item.created_by)
   const isArea = item.type === 'area'
+
+  // 反向取此項目已連結的文件（詳情頁顯示）。換項目時重抓；失敗不擋詳情其餘內容。
+  const [linkedDocs, setLinkedDocs] = useState<Document[]>([])
+  const [manageOpen, setManageOpen] = useState(false)
+
+  // 手動重抓（管理連結變動後呼叫）；元件仍掛載故不需 active 守衛
+  async function refreshLinked() {
+    try {
+      setLinkedDocs(await listDocumentsByItem(item.id))
+    } catch (e) {
+      console.warn('[DetailSheet] 連結文件載入失敗', e)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const docs = await listDocumentsByItem(item.id)
+        if (active) setLinkedDocs(docs)
+      } catch (e) {
+        console.warn('[DetailSheet] 連結文件載入失敗', e)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [item.id])
 
   return (
     <div className="absolute inset-0 z-[72] flex flex-col bg-bg animate-slideleft">
@@ -91,6 +124,8 @@ export default function DetailSheet({
             item={item}
             candidates={candidates}
             days={days}
+            linkedDocs={linkedDocs}
+            onManageDocs={() => setManageOpen(true)}
             onUpdate={onUpdate}
             onRemove={onRemove}
             onMoveDay={onMoveDay}
@@ -103,13 +138,24 @@ export default function DetailSheet({
             item={item}
             stationLabel={stationLabel}
             days={days}
+            linkedDocs={linkedDocs}
+            onManageDocs={() => setManageOpen(true)}
             onUpdate={onUpdate}
             onRemove={onRemove}
             onMoveDay={onMoveDay}
-            onClose={onClose}
           />
         )}
       </div>
+
+      {manageOpen && (
+        <DocLinkSheet
+          tripId={tripId}
+          targetKind="item"
+          targetId={item.id}
+          onChanged={refreshLinked}
+          onClose={() => setManageOpen(false)}
+        />
+      )}
     </div>
   )
 }

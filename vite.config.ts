@@ -53,7 +53,9 @@ export default defineConfig(({ command }) => {
           ],
         },
         workbox: {
-          // 文件匣離線需求：行程文字與已下載文件之後再加 runtimeCaching 規則
+          // 預快取 app shell，離線仍可開啟 App。
+          // 文件離線改走應用層 IndexedDB（src/lib/offline/docCache.ts），由使用者每份手動下載，
+          // 不依賴 workbox runtimeCaching。行程文字離線快取留後續階段。
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         },
         devOptions: {

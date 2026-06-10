@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import type { AreaCandidate, Day, Item } from '../../../lib/types'
+import type { AreaCandidate, Day, Document, Item } from '../../../lib/types'
 import type { ItemPatch } from '../../../lib/itinerary'
 import Icon from '../../Icon'
+import LinkedDocs from '../../docs/LinkedDocs'
 import { DetailHead, Eyebrow } from './parts'
 import MoveRemoveActions from './MoveRemoveActions'
 
@@ -9,6 +10,8 @@ interface AreaDetailProps {
   item: Item
   candidates: AreaCandidate[]
   days: Day[]
+  linkedDocs: Document[]
+  onManageDocs: () => void
   onUpdate: (patch: ItemPatch) => Promise<void>
   onRemove: () => Promise<void>
   onMoveDay: (dayId: string) => Promise<void>
@@ -21,6 +24,8 @@ export default function AreaDetail({
   item,
   candidates,
   days,
+  linkedDocs,
+  onManageDocs,
   onUpdate,
   onRemove,
   onMoveDay,
@@ -119,6 +124,8 @@ export default function AreaDetail({
           className="mt-2 w-full resize-none rounded-lg border border-line bg-surface-2 px-[15px] py-[13px] text-[14.5px] leading-[1.55] text-ink-2 outline-none focus:border-primary focus:bg-white"
         />
       </div>
+
+      <LinkedDocs docs={linkedDocs} onManage={onManageDocs} />
 
       <MoveRemoveActions
         itemName={item.name}

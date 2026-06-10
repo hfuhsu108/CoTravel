@@ -1,12 +1,15 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
-import type { Item, Transport, TransportMode } from '../../../lib/types'
+import type { Document, Item, Transport, TransportMode } from '../../../lib/types'
 import { fetchDirections, type DirectionsMode } from '../../../lib/directions'
+import { listDocumentsByTransport } from '../../../lib/documents'
 import { errMessage } from '../../../lib/errMessage'
 import Icon from '../../Icon'
 import Field, { inputClassName } from '../../ui/Field'
 import Button from '../../ui/Button'
+import LinkedDocs from '../../docs/LinkedDocs'
+import DocLinkSheet from '../../docs/DocLinkSheet'
 import MiniRouteMap from '../MiniRouteMap'
 import { DetailHead } from './parts'
 
@@ -60,7 +63,6 @@ export default function TransitDetail({
 }: TransitDetailProps) {
   const routesLib = useMapsLibrary('routes')
   const geometryLib = useMapsLibrary('geometry')
-  const navigate = useNavigate()
   const { tripId = '' } = useParams()
 
   const [mode, setMode] = useState<TransportMode>(transport?.mode ?? 'walk')
@@ -77,6 +79,41 @@ export default function TransitDetail({
   )
   const [costText, setCostText] = useState(isCustomTransport ? (transport?.cost_text ?? '') : '')
   const [notes, setNotes] = useState(isCustomTransport ? (transport?.notes ?? '') : '')
+
+  // 連結文件（所有交通段皆可連，多對多）：需 transport 已存在（有 id）才能連結
+  const [linkedDocs, setLinkedDocs] = useState<Document[]>([])
+  const [manageOpen, setManageOpen] = useState(false)
+
+  async function refreshLinked() {
+    if (!transport) {
+      setLinkedDocs([])
+      return
+    }
+    try {
+      setLinkedDocs(await listDocumentsByTransport(transport.id))
+    } catch (e) {
+      console.warn('[TransitDetail] 連結文件載入失敗', e)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      if (!transport) {
+        setLinkedDocs([])
+        return
+      }
+      try {
+        const docs = await listDocumentsByTransport(transport.id)
+        if (active) setLinkedDocs(docs)
+      } catch (e) {
+        console.warn('[TransitDetail] 連結文件載入失敗', e)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [transport?.id])
 
   const fromCoord =
     fromItem.lat != null && fromItem.lng != null
@@ -276,16 +313,6 @@ export default function TransitDetail({
                 className={inputClassName}
               />
             </Field>
-            <button
-              type="button"
-              onClick={() => {
-                onClose()
-                navigate(`/trips/${tripId}/docs`)
-              }}
-              className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface py-[14px] text-base font-bold text-ink shadow-1 active:scale-[0.98]"
-            >
-              <Icon name="link" size={17} /> 連結車票文件
-            </button>
             <Button variant="primary" block disabled={busy || !customLabel.trim()} onClick={saveCustom}>
               <Icon name="check" size={17} /> 儲存
             </Button>
@@ -313,6 +340,13 @@ export default function TransitDetail({
           </>
         )}
 
+        {/* 連結文件（所有交通段皆可；新建未存的段先停用並提示） */}
+        <LinkedDocs
+          docs={linkedDocs}
+          onManage={() => setManageOpen(true)}
+          disabledReason={transport ? undefined : '先設定此段交通後即可連結文件'}
+        />
+
         {/* 導航 + 移除 */}
         <div className="mt-2 flex flex-col gap-[10px]">
           {fromCoord && toCoord && (
@@ -333,6 +367,16 @@ export default function TransitDetail({
           )}
         </div>
       </div>
+
+      {manageOpen && transport && (
+        <DocLinkSheet
+          tripId={tripId}
+          targetKind="transport"
+          targetId={transport.id}
+          onChanged={refreshLinked}
+          onClose={() => setManageOpen(false)}
+        />
+      )}
     </div>
   )
 }

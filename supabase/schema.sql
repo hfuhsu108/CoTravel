@@ -111,19 +111,19 @@ create table if not exists area_candidates (
   created_at timestamptz default now()
 );
 
--- 文件匣（中繼資料；實際檔案在 Storage）
+-- 文件匣（中繼資料；實際檔案在 Storage）。連結改走多對多關聯表（document_items / document_transports），
+-- 故此表不再有 linked_item_id 欄位。
 create table if not exists documents (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid references trips(id) on delete cascade,
   category text not null,                 -- flight | lodging | document | other
   file_name text not null,
   storage_path text not null,
-  linked_item_id uuid references items(id) on delete set null,
   uploaded_by uuid references auth.users(id),
   created_at timestamptz default now()
 );
 
--- 相鄰項目間的交通（document_id inline 外鍵，免事後 alter）
+-- 相鄰項目間的交通。連結車票文件改走多對多關聯表（document_transports），故不再有 document_id 欄位。
 create table if not exists transports (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid references trips(id) on delete cascade,
@@ -135,11 +135,48 @@ create table if not exists transports (
   custom_label text,                      -- 自定義時用：'新幹線' '包車'
   cost_text text,                         -- 費用顯示字串，如 '¥240'（幣別多樣，純顯示；階段 3 新增）
   route_polyline text,                    -- Google 路線編碼（可選快取，畫在主地圖）
-  document_id uuid references documents(id) on delete set null,
   notes text,
   created_at timestamptz default now(),
   unique (from_item_id, to_item_id)       -- 一段交通一列（以相鄰對為鍵 upsert，防併發重複）
 );
+
+-- 文件 ↔ 行程項目 / 交通 的多對多連結（一項目/交通可連多文件，一文件可連多項目/交通）
+create table if not exists document_items (
+  document_id uuid references documents(id) on delete cascade,
+  item_id uuid references items(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (document_id, item_id)
+);
+create table if not exists document_transports (
+  document_id uuid references documents(id) on delete cascade,
+  transport_id uuid references transports(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (document_id, transport_id)
+);
+
+-- 既有資料庫自我修復：把舊的單一連結欄位（documents.linked_item_id、transports.document_id）
+-- 搬進多對多關聯表，再 drop 掉舊欄位。用欄位存在性 guard，可安全重跑（新裝者無此欄位、整段略過）。
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_name = 'documents' and column_name = 'linked_item_id'
+  ) then
+    insert into document_items (document_id, item_id)
+      select id, linked_item_id from documents where linked_item_id is not null
+      on conflict do nothing;
+    alter table documents drop column linked_item_id;
+  end if;
+  if exists (
+    select 1 from information_schema.columns
+    where table_name = 'transports' and column_name = 'document_id'
+  ) then
+    insert into document_transports (document_id, transport_id)
+      select document_id, id from transports where document_id is not null
+      on conflict do nothing;
+    alter table transports drop column document_id;
+  end if;
+end $$;
 
 -- 既有資料庫自我修復（新裝者已由上方 inline 帶入；此段讓 schema.sql 在舊庫重跑時補上階段 3 的
 -- cost_text 欄與 (from_item_id,to_item_id) 唯一鍵。皆冪等，可安全重跑）。
@@ -348,6 +385,8 @@ alter table items           enable row level security;
 alter table area_candidates enable row level security;
 alter table transports      enable row level security;
 alter table documents       enable row level security;
+alter table document_items      enable row level security;
+alter table document_transports enable row level security;
 alter table packing_items   enable row level security;
 alter table activity_log    enable row level security;
 
@@ -400,6 +439,25 @@ drop policy if exists "members rw documents" on documents;
 create policy "members rw documents" on documents
   for all using (is_trip_member(trip_id)) with check (is_trip_member(trip_id));
 
+-- 多對多連結：成員可讀寫；with check 同時驗證 document 與 item/transport 都屬使用者所在 trip（防跨趟連結）
+drop policy if exists "members rw document_items" on document_items;
+create policy "members rw document_items" on document_items
+  for all using (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+  ) with check (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+    and exists (select 1 from items i where i.id = item_id and is_trip_member(i.trip_id))
+  );
+
+drop policy if exists "members rw document_transports" on document_transports;
+create policy "members rw document_transports" on document_transports
+  for all using (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+  ) with check (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+    and exists (select 1 from transports t where t.id = transport_id and is_trip_member(t.trip_id))
+  );
+
 -- area_candidates：無 trip_id，透過 item_id join 回 items 判斷成員
 drop policy if exists "members rw area_candidates" on area_candidates;
 create policy "members rw area_candidates" on area_candidates
@@ -424,3 +482,32 @@ create policy "members read activity" on activity_log
 drop policy if exists "members insert activity" on activity_log;
 create policy "members insert activity" on activity_log
   for insert with check (is_trip_member(trip_id) and user_id = auth.uid());
+
+-- ----------------------------------------------------------------
+-- 6. Storage：文件匣 bucket + RLS（階段 4）
+--    檔案一律透過 src/lib/storage/ 抽象層存取；路徑慣例 <trip_id>/<uuid>/<檔名>，
+--    首段即 trip_id，storage policy 據此判斷成員（重用 is_trip_member）。bucket 為 private。
+-- ----------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('documents', 'documents', false)
+on conflict (id) do nothing;
+
+-- bucket=documents 時，依路徑首段 trip_id 判斷是否為該趟成員（讀/寫/刪皆同條件）
+drop policy if exists "trip members read documents files" on storage.objects;
+create policy "trip members read documents files" on storage.objects
+  for select using (
+    bucket_id = 'documents'
+    and is_trip_member(((storage.foldername(name))[1])::uuid)
+  );
+drop policy if exists "trip members insert documents files" on storage.objects;
+create policy "trip members insert documents files" on storage.objects
+  for insert with check (
+    bucket_id = 'documents'
+    and is_trip_member(((storage.foldername(name))[1])::uuid)
+  );
+drop policy if exists "trip members delete documents files" on storage.objects;
+create policy "trip members delete documents files" on storage.objects
+  for delete using (
+    bucket_id = 'documents'
+    and is_trip_member(((storage.foldername(name))[1])::uuid)
+  );

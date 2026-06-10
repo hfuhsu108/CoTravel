@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
-import type { Day, Item } from '../../../lib/types'
+import type { Day, Document, Item } from '../../../lib/types'
 import type { ItemPatch } from '../../../lib/itinerary'
 import Icon from '../../Icon'
+import LinkedDocs from '../../docs/LinkedDocs'
 import { DetailHead, InfoRow, Eyebrow } from './parts'
 import MoveRemoveActions from './MoveRemoveActions'
 
@@ -11,10 +11,11 @@ interface PlaceDetailProps {
   item: Item
   stationLabel: string | null // 例：'Day 2・第 2 站'
   days: Day[]
+  linkedDocs: Document[]
+  onManageDocs: () => void
   onUpdate: (patch: ItemPatch) => Promise<void>
   onRemove: () => Promise<void>
   onMoveDay: (dayId: string) => Promise<void>
-  onClose: () => void
 }
 
 interface LiveDetails {
@@ -34,14 +35,13 @@ export default function PlaceDetail({
   item,
   stationLabel,
   days,
+  linkedDocs,
+  onManageDocs,
   onUpdate,
   onRemove,
   onMoveDay,
-  onClose,
 }: PlaceDetailProps) {
   const places = useMapsLibrary('places')
-  const navigate = useNavigate()
-  const { tripId = '' } = useParams()
 
   const [live, setLive] = useState<LiveDetails | null>(null)
   const [time, setTime] = useState(item.scheduled_time?.slice(0, 5) ?? '')
@@ -151,21 +151,13 @@ export default function PlaceDetail({
         />
       </div>
 
-      <div className="mb-[10px] flex gap-[10px]">
-        <button
-          type="button"
-          onClick={() => {
-            onClose()
-            navigate(`/trips/${tripId}/docs`)
-          }}
-          className="flex flex-1 items-center justify-center gap-2 rounded-md border border-line bg-surface py-[14px] text-base font-bold text-ink shadow-1 active:scale-[0.98]"
-        >
-          <Icon name="link" size={17} /> 連結文件
-        </button>
+      <LinkedDocs docs={linkedDocs} onManage={onManageDocs} />
+
+      <div className="mb-[10px]">
         <button
           type="button"
           onClick={handleNavigate}
-          className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary py-[14px] text-base font-bold text-white active:scale-[0.98]"
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-primary py-[14px] text-base font-bold text-white active:scale-[0.98]"
           style={{ boxShadow: '0 6px 16px rgba(122,108,240,.35)' }}
         >
           <Icon name="nav" size={17} /> 導航

@@ -107,7 +107,23 @@ export interface Transport {
   custom_label: string | null // 自定義方式名稱，如 '新幹線'
   cost_text: string | null // 費用顯示字串，如 '¥240'
   route_polyline: string | null // Google encoded polyline（畫真實路線用）
-  document_id: string | null // 連結車票等文件（文件選取器留階段 4）
   notes: string | null
+  created_at: string
+}
+
+// ---- 文件匣（階段 4；對應 docs/03 的 documents） ----
+
+// 機票 / 住宿 / 文件（簽證保險證件） / 其他
+export type DocumentCategory = 'flight' | 'lodging' | 'document' | 'other'
+
+// 連結（document_items / document_transports）為多對多：一個項目/交通可連多份文件，
+// 一份文件也可連多個項目/交通。前端只需文件本身，連結以 document_id+item_id/transport_id 操作。
+export interface Document {
+  id: string
+  trip_id: string
+  category: DocumentCategory
+  file_name: string
+  storage_path: string // Storage 內路徑（一律透過 storage 抽象層存取）
+  uploaded_by: string | null
   created_at: string
 }
