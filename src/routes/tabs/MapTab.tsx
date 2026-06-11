@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import {
@@ -30,6 +30,8 @@ import {
   type ItemPatch,
 } from '../../lib/itinerary'
 import { listTransports, removeTransport, upsertTransport } from '../../lib/transports'
+import { logActivity } from '../../lib/activity'
+import { useTripRealtime } from '../../lib/tripRealtime'
 import { errMessage } from '../../lib/errMessage'
 import { env } from '../../lib/env'
 import { formatRange } from '../../lib/date'
@@ -45,6 +47,7 @@ import DetailSheet from '../../components/map/detail/DetailSheet'
 import TransitDetail, { type TransitSavePayload } from '../../components/map/detail/TransitDetail'
 import PlaceSearch, { type PickKind, type PickedPlace } from '../../components/map/PlaceSearch'
 import AddAreaSheet from '../../components/map/AddAreaSheet'
+import NotificationsSheet from '../../components/NotificationsSheet'
 
 function todayStr(): string {
   const n = new Date()
@@ -64,6 +67,7 @@ export default function MapTab() {
   const { tripId = '' } = useParams()
   const { user } = useAuth()
   const meId = user?.id ?? ''
+  const { ticks, unread, markSeen } = useTripRealtime()
 
   const [trip, setTrip] = useState<TripWithMembers | null>(null)
   const [days, setDays] = useState<Day[]>([])
@@ -87,6 +91,7 @@ export default function MapTab() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   // 開啟中的交通編輯（相鄰 from→to 兩項目 id）
   const [transitEdit, setTransitEdit] = useState<{ fromId: string; toId: string } | null>(null)
+  const [notifOpen, setNotifOpen] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -122,6 +127,109 @@ export default function MapTab() {
       active = false
     }
   }, [tripId])
+
+  // ---- Realtime（階段 6）：tick 變更 → 靜默 refetch（不閃 loading、不重設目前天）----
+  // 鏡像 items 給 reloadCandidates 用（避免 callback 依賴 items 造成每次重建）
+  const itemsRef = useRef<Item[]>([])
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  const reloadItinerary = useCallback(async () => {
+    try {
+      const its = await listItems(tripId)
+      const areaIds = its.filter((i) => i.type === 'area').map((i) => i.id)
+      const cands = await listCandidatesByItems(areaIds)
+      setItems(its)
+      setCandidates(cands)
+    } catch (e) {
+      console.warn('[map] 行程即時刷新失敗', e)
+    }
+  }, [tripId])
+
+  const reloadCandidates = useCallback(async () => {
+    try {
+      const areaIds = itemsRef.current.filter((i) => i.type === 'area').map((i) => i.id)
+      setCandidates(await listCandidatesByItems(areaIds))
+    } catch (e) {
+      console.warn('[map] 候選即時刷新失敗', e)
+    }
+  }, [])
+
+  const reloadTransports = useCallback(async () => {
+    try {
+      setTransports(await listTransports(tripId))
+    } catch (e) {
+      console.warn('[map] 交通即時刷新失敗', e)
+    }
+  }, [tripId])
+
+  // 拖拉中不能 refetch（setItems 會重排 SortableContext、打斷拖拉），先記 pending、放手後補。
+  // 300ms debounce：合併一次重排造成的多筆 UPDATE 事件（自己的寫入也會觸發事件，多刷一次無害）。
+  type ReloadKind = 'itinerary' | 'candidates' | 'transports'
+  const activeDragRef = useRef(false)
+  const pendingReloadRef = useRef<Set<ReloadKind>>(new Set())
+  const reloadTimerRef = useRef<number | null>(null)
+
+  const flushReloads = useCallback(() => {
+    reloadTimerRef.current = null
+    if (activeDragRef.current) return
+    const kinds = pendingReloadRef.current
+    pendingReloadRef.current = new Set()
+    // itinerary 的 reload 已含候選，不重複查
+    if (kinds.has('itinerary')) void reloadItinerary()
+    else if (kinds.has('candidates')) void reloadCandidates()
+    if (kinds.has('transports')) void reloadTransports()
+  }, [reloadItinerary, reloadCandidates, reloadTransports])
+
+  const queueReload = useCallback(
+    (kind: ReloadKind) => {
+      pendingReloadRef.current.add(kind)
+      if (activeDragRef.current) return
+      if (reloadTimerRef.current != null) window.clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = window.setTimeout(flushReloads, 300)
+    },
+    [flushReloads],
+  )
+
+  // 卸載時清掉未觸發的 debounce timer
+  useEffect(
+    () => () => {
+      if (reloadTimerRef.current != null) window.clearTimeout(reloadTimerRef.current)
+    },
+    [],
+  )
+
+  // 各表 tick：首渲染（含初載）跳過，之後每次變更排入 refetch
+  const itemsTick = ticks.items
+  const firstItemsTickRef = useRef(true)
+  useEffect(() => {
+    if (firstItemsTickRef.current) {
+      firstItemsTickRef.current = false
+      return
+    }
+    queueReload('itinerary')
+  }, [itemsTick, queueReload])
+
+  const candidatesTick = ticks.area_candidates
+  const firstCandidatesTickRef = useRef(true)
+  useEffect(() => {
+    if (firstCandidatesTickRef.current) {
+      firstCandidatesTickRef.current = false
+      return
+    }
+    queueReload('candidates')
+  }, [candidatesTick, queueReload])
+
+  const transportsTick = ticks.transports
+  const firstTransportsTickRef = useRef(true)
+  useEffect(() => {
+    if (firstTransportsTickRef.current) {
+      firstTransportsTickRef.current = false
+      return
+    }
+    queueReload('transports')
+  }, [transportsTick, queueReload])
 
   const candidatesByItem = useMemo(() => {
     const m = new Map<string, AreaCandidate[]>()
@@ -184,9 +292,16 @@ export default function MapTab() {
     setPopupItemId(null)
   }
 
+  // activity_log 摘要用的「Day N」字樣
+  function dayLabelOf(dayId: string | null): string {
+    const d = days.find((x) => x.id === dayId)
+    return d ? `Day ${d.day_index}` : '行程'
+  }
+
   // ---- 加入地點 / 候選（PlaceSearch 的 onPick；失敗則 throw 讓搜尋頁內顯示） ----
   async function handlePick(place: PickedPlace, kind: PickKind) {
     if (kind === 'candidate' && search?.targetItemId) {
+      const areaName = items.find((i) => i.id === search.targetItemId)?.name ?? '區域'
       const cand = await addCandidate({
         item_id: search.targetItemId,
         name: place.name,
@@ -195,6 +310,7 @@ export default function MapTab() {
         google_place_id: place.google_place_id,
       })
       setCandidates((cs) => [...cs, cand])
+      logActivity(tripId, meId, 'candidate_add', `在「${areaName}」加了候選「${place.name}」`)
     } else {
       const newItem = await addItem({
         trip_id: tripId,
@@ -208,6 +324,14 @@ export default function MapTab() {
         photo_url: place.photo_url,
       })
       setItems((its) => [...its, newItem])
+      logActivity(
+        tripId,
+        meId,
+        'item_add',
+        kind === 'bookmark'
+          ? `把「${place.name}」加進書籤`
+          : `把「${place.name}」加到 ${dayLabelOf(currentDayId)}`,
+      )
     }
     setSearch(null)
   }
@@ -223,6 +347,8 @@ export default function MapTab() {
 
   async function handleRemoveItem(id: string) {
     try {
+      // 名稱要在刪除前抓，否則 state 已濾掉查不到
+      const name = items.find((i) => i.id === id)?.name ?? '一個項目'
       await removeItem(id)
       setItems((its) => its.filter((i) => i.id !== id))
       setCandidates((cs) => cs.filter((c) => c.item_id !== id))
@@ -231,6 +357,7 @@ export default function MapTab() {
       setDetailItemId(null)
       setPopupItemId(null)
       setSelectedItemId(null)
+      logActivity(tripId, meId, 'item_remove', `移除了「${name}」`)
     } catch (e) {
       setError(errMessage(e))
     }
@@ -238,12 +365,14 @@ export default function MapTab() {
 
   async function handleMoveDay(id: string, dayId: string) {
     try {
+      const name = items.find((i) => i.id === id)?.name ?? '一個項目'
       const updated = await moveItemToDay(id, dayId)
       setItems((its) => its.map((i) => (i.id === id ? updated : i)))
       setCurrentDayId(dayId)
       setDetailItemId(null)
       setPopupItemId(null)
       setSelectedItemId(null)
+      logActivity(tripId, meId, 'item_move', `把「${name}」移到 ${dayLabelOf(dayId)}`)
     } catch (e) {
       setError(errMessage(e))
     }
@@ -281,13 +410,26 @@ export default function MapTab() {
       ...payload,
     })
     setTransports((ts) => [...ts.filter((t) => t.id !== saved.id), saved])
+    const fromName = items.find((i) => i.id === fromId)?.name ?? '起點'
+    const toName = items.find((i) => i.id === toId)?.name ?? '終點'
+    logActivity(tripId, meId, 'transport_set', `設定了「${fromName} → ${toName}」的交通`)
   }
 
   async function handleRemoveTransport(id: string) {
     try {
+      // from/to 名稱要在刪除前反查
+      const tr = transports.find((t) => t.id === id)
+      const fromName = tr ? items.find((i) => i.id === tr.from_item_id)?.name : null
+      const toName = tr ? items.find((i) => i.id === tr.to_item_id)?.name : null
       await removeTransport(id)
       setTransports((ts) => ts.filter((t) => t.id !== id))
       setTransitEdit(null)
+      logActivity(
+        tripId,
+        meId,
+        'transport_remove',
+        fromName && toName ? `移除了「${fromName} → ${toName}」的交通` : '移除了一段交通',
+      )
     } catch (e) {
       setError(errMessage(e))
     }
@@ -312,6 +454,7 @@ export default function MapTab() {
     })
     setItems((its) => [...its, newItem])
     setPendingAreaCenter(null)
+    logActivity(tripId, meId, 'item_add', `把區域「${data.name}」加到 ${dayLabelOf(currentDayId)}`)
   }
 
   function handleMapClick(latLng: google.maps.LatLngLiteral) {
@@ -326,10 +469,21 @@ export default function MapTab() {
 
   function onDragStart(e: DragStartEvent) {
     setActiveDragId(String(e.active.id))
+    activeDragRef.current = true
+  }
+
+  // 拖拉結束/取消：解除 refetch 封鎖，把拖拉期間累積的 pending 補上
+  function endDragGuard() {
+    activeDragRef.current = false
+    if (pendingReloadRef.current.size > 0) {
+      if (reloadTimerRef.current != null) window.clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = window.setTimeout(flushReloads, 300)
+    }
   }
 
   function onDragEnd(e: DragEndEvent) {
     setActiveDragId(null)
+    endDragGuard()
     const { active, over } = e
     if (!over) return
     const activeId = String(active.id)
@@ -399,6 +553,11 @@ export default function MapTab() {
             dateRange={formatRange(trip.start_date, trip.end_date)}
             members={trip.members}
             meId={meId}
+            unread={unread}
+            onBell={() => {
+              markSeen()
+              setNotifOpen(true)
+            }}
           />
         )}
 
@@ -407,7 +566,10 @@ export default function MapTab() {
           collisionDetection={collisionDetection}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
-          onDragCancel={() => setActiveDragId(null)}
+          onDragCancel={() => {
+            setActiveDragId(null)
+            endDragGuard()
+          }}
         >
           <div
             className="pointer-events-none absolute inset-x-0 z-30 px-3"
@@ -546,6 +708,16 @@ export default function MapTab() {
         {/* 圈區域設定 sheet */}
         {pendingAreaCenter && (
           <AddAreaSheet onClose={() => setPendingAreaCenter(null)} onConfirm={handleConfirmArea} />
+        )}
+
+        {/* 鈴鐺：最近改動清單 */}
+        {notifOpen && trip && (
+          <NotificationsSheet
+            tripId={tripId}
+            members={trip.members}
+            meId={meId}
+            onClose={() => setNotifOpen(false)}
+          />
         )}
 
         {/* 「＋ 加項目」動作選單 */}

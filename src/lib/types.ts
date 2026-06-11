@@ -127,3 +127,26 @@ export interface Document {
   uploaded_by: string | null
   created_at: string
 }
+
+// ---- 行李清單（階段 5；對應 docs/03 的 packing_items） ----
+
+export interface PackingItem {
+  id: string
+  trip_id: string
+  owner_user_id: string // 誰的行李（RLS：只有本人能寫）
+  name: string
+  category: string | null // 證件 / 電子產品 / 盥洗...
+  is_packed: boolean
+  created_at: string
+}
+
+// ---- 改動紀錄（階段 6；對應 docs/03 的 activity_log） ----
+
+export interface ActivityEntry {
+  id: string
+  trip_id: string
+  user_id: string | null
+  action: string // 動作代碼，見 src/lib/activity.ts 的 ActivityAction
+  target_summary: string | null // 不含人名的完整動作句，UI 渲染 = <b>名字</b> + 此句
+  created_at: string
+}

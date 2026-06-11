@@ -13,6 +13,20 @@ export function formatDayLabel(dateStr: string): string {
   return `${m}/${d} ${wd}`
 }
 
+// timestamptz ISO 字串 → 相對時間（通知清單用）。超過 7 天直接顯示日期，避免「53 天前」這種沒資訊量的字
+export function formatRelative(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diffMs / 60_000)
+  if (min < 1) return '剛剛'
+  if (min < 60) return `${min} 分鐘前`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} 小時前`
+  const day = Math.floor(hr / 24)
+  if (day <= 7) return `${day} 天前`
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
 // 旅程日期區間：'7/12 – 7/16'；缺值回 null
 export function formatRange(start: string | null, end: string | null): string | null {
   if (!start && !end) return null

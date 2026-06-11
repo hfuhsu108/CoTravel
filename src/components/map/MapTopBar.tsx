@@ -8,10 +8,20 @@ interface MapTopBarProps {
   dateRange: string | null
   members: TripMemberWithProfile[]
   meId: string
+  // 通知（階段 6）：有未讀對方改動時顯示紅點；點鈴鐺開最近改動清單
+  unread?: boolean
+  onBell?: () => void
 }
 
-// 主畫面浮層頂列：返回旅程列表、置中旅程名＋日期、兩人頭像對、鈴鐺（階段 6 才接通知，現為靜態）。
-export default function MapTopBar({ tripName, dateRange, members, meId }: MapTopBarProps) {
+// 主畫面浮層頂列：返回旅程列表、置中旅程名＋日期、兩人頭像對、鈴鐺。
+export default function MapTopBar({
+  tripName,
+  dateRange,
+  members,
+  meId,
+  unread = false,
+  onBell,
+}: MapTopBarProps) {
   const navigate = useNavigate()
   const me = members.find((m) => m.user_id === meId)
   const partner = members.find((m) => m.user_id !== meId)
@@ -58,9 +68,13 @@ export default function MapTopBar({ tripName, dateRange, members, meId }: MapTop
           <button
             type="button"
             aria-label="通知"
-            className="flex h-10 w-10 items-center justify-center rounded-[13px] border border-line bg-surface text-ink-2 shadow-1 active:scale-95"
+            onClick={onBell}
+            className="relative flex h-10 w-10 items-center justify-center rounded-[13px] border border-line bg-surface text-ink-2 shadow-1 active:scale-95"
           >
             <Icon name="bell" size={19} />
+            {unread && (
+              <span className="absolute right-2 top-[7px] h-[9px] w-[9px] rounded-full border-2 border-white bg-danger" />
+            )}
           </button>
         </div>
       </div>

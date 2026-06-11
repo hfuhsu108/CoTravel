@@ -1,8 +1,12 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useParams } from 'react-router-dom'
 import Icon, { type IconName } from '../components/Icon'
+import ActivityBanner from '../components/ActivityBanner'
+import { useAuth } from '../lib/auth'
+import { TripRealtimeProvider } from '../lib/tripRealtime'
 
 // 畫面 2 外殼：主畫面，底部三分頁（地圖 / 文件 / 行李）。內容由各 tab 子路由填入。
 // 通用標題列移除——地圖分頁是全幅地圖、有自己的浮層頂列（返回/旅程名/頭像/鈴鐺）。
+// Realtime 訂閱掛在這層：分頁切換不重建 channel，banner 三分頁皆可見。
 const tabs: { to: string; label: string; icon: IconName }[] = [
   { to: 'map', label: '地圖', icon: 'map' },
   { to: 'docs', label: '文件', icon: 'doc' },
@@ -10,40 +14,46 @@ const tabs: { to: string; label: string; icon: IconName }[] = [
 ]
 
 export default function TripMain() {
-  return (
-    <div className="flex h-full flex-col">
-      {/* 各分頁自管捲動；地圖分頁需全幅，故這裡 overflow-hidden + relative 供浮層定位 */}
-      <main className="relative flex-1 overflow-hidden">
-        <Outlet />
-      </main>
+  const { tripId = '' } = useParams()
+  const { user } = useAuth()
 
-      {/* 底部三分頁（z 低於地圖浮層/側欄/詳情，數值見各浮層元件） */}
-      <nav className="z-10 flex flex-none border-t border-line bg-surface px-[10px] pb-7 pt-[9px]">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            className={({ isActive }) =>
-              `flex flex-1 flex-col items-center gap-1 rounded-[14px] py-[6px] text-[11px] font-bold ${
-                isActive ? 'text-primary-deep' : 'text-ink-3'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={`flex h-[30px] w-[46px] items-center justify-center rounded-[11px] transition-colors ${
-                    isActive ? 'bg-primary-soft' : ''
-                  }`}
-                >
-                  <Icon name={tab.icon} size={22} />
-                </span>
-                {tab.label}
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
+  return (
+    <TripRealtimeProvider tripId={tripId} meId={user?.id ?? ''}>
+      <div className="flex h-full flex-col">
+        {/* 各分頁自管捲動；地圖分頁需全幅，故這裡 overflow-hidden + relative 供浮層定位 */}
+        <main className="relative flex-1 overflow-hidden">
+          <Outlet />
+          <ActivityBanner />
+        </main>
+
+        {/* 底部三分頁（z 低於地圖浮層/側欄/詳情，數值見各浮層元件） */}
+        <nav className="z-10 flex flex-none border-t border-line bg-surface px-[10px] pb-7 pt-[9px]">
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              className={({ isActive }) =>
+                `flex flex-1 flex-col items-center gap-1 rounded-[14px] py-[6px] text-[11px] font-bold ${
+                  isActive ? 'text-primary-deep' : 'text-ink-3'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={`flex h-[30px] w-[46px] items-center justify-center rounded-[11px] transition-colors ${
+                      isActive ? 'bg-primary-soft' : ''
+                    }`}
+                  >
+                    <Icon name={tab.icon} size={22} />
+                  </span>
+                  {tab.label}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    </TripRealtimeProvider>
   )
 }

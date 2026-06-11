@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { getTripWithMembers } from '../../lib/api'
 import { listDocuments, listLinkCounts, removeDocument } from '../../lib/documents'
+import { logActivity } from '../../lib/activity'
+import { useTripRealtime } from '../../lib/tripRealtime'
 import { cacheDocument } from '../../lib/documentView'
 import { listCachedPaths, removeCached } from '../../lib/offline/docCache'
 import { useOnline } from '../../lib/useOnline'
@@ -19,6 +21,7 @@ export default function DocsTab() {
   const { tripId = '' } = useParams()
   const { user } = useAuth()
   const meId = user?.id ?? ''
+  const { ticks } = useTripRealtime()
 
   const [documents, setDocuments] = useState<Document[]>([])
   const [linkCounts, setLinkCounts] = useState<Map<string, number>>(new Map())
@@ -65,6 +68,33 @@ export default function DocsTab() {
     }
   }, [tripId])
 
+  // Realtime：documents 變更（多半是對方上傳/刪除）→ 靜默 refetch，不閃 loading。
+  // cachedPaths 是本機 IndexedDB 狀態，與遠端變更無關、不重讀。
+  const docsTick = ticks.documents
+  const firstDocsTickRef = useRef(true)
+  useEffect(() => {
+    if (firstDocsTickRef.current) {
+      firstDocsTickRef.current = false
+      return
+    }
+    let active = true
+    async function reload() {
+      try {
+        const docs = await listDocuments(tripId)
+        const counts = await listLinkCounts(docs.map((d) => d.id))
+        if (!active) return
+        setDocuments(docs)
+        setLinkCounts(counts)
+      } catch (e) {
+        console.warn('[docs] 即時刷新失敗', e)
+      }
+    }
+    void reload()
+    return () => {
+      active = false
+    }
+  }, [docsTick, tripId])
+
   const byTab = useMemo(() => documents.filter((d) => d.category === tab), [documents, tab])
   // 離線：已快取在前、未快取灰階在後；線上：全部正常顯示
   const visible = effectiveOffline ? byTab.filter((d) => cachedPaths.has(d.storage_path)) : byTab
@@ -75,6 +105,7 @@ export default function DocsTab() {
     if (cached) setCachedPaths((prev) => new Set(prev).add(doc.storage_path))
     setTab(doc.category)
     setUploadOpen(false)
+    logActivity(tripId, meId, 'doc_add', `上傳了文件「${doc.file_name}」`)
   }
 
   async function handleToggleCache(doc: Document, next: boolean) {
@@ -101,6 +132,7 @@ export default function DocsTab() {
       return copy
     })
     setActionDoc(null)
+    logActivity(tripId, meId, 'doc_remove', `刪除了文件「${doc.file_name}」`)
   }
 
   if (loading) {

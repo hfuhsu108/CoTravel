@@ -511,3 +511,25 @@ create policy "trip members delete documents files" on storage.objects
     bucket_id = 'documents'
     and is_trip_member(((storage.foldername(name))[1])::uuid)
   );
+
+-- ----------------------------------------------------------------
+-- 7. Realtime publication（階段 6）：把需要即時同步的表加進 supabase_realtime。
+--    冪等：publication 不存在先建；已在 publication 內的表跳過，可整段重跑。
+--    注意：Realtime 的 DELETE 事件不套 RLS、也不吃 filter（官方行為），
+--    故前端一律「收到事件 → 依 tripId refetch」，絕不直接使用事件 payload。
+-- ----------------------------------------------------------------
+do $$
+declare t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  foreach t in array array['items','area_candidates','transports','documents','packing_items','activity_log'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
