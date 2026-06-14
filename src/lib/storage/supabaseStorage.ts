@@ -37,6 +37,17 @@ export class SupabaseFileStorage implements FileStorage {
     if (error) throw error
   }
 
+  async removeByPrefix(prefix: string): Promise<void> {
+    // 列出該前綴下所有物件（檔案的 id 非 null；保險過濾掉子資料夾項目）。
+    // 本專案路徑為扁平的 <tripId>/<uuid>.<ext>，故 limit 1000 足夠單趟用量。
+    const { data, error } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 })
+    if (error) throw error
+    const paths = (data ?? []).filter((o) => o.id !== null).map((o) => `${prefix}/${o.name}`)
+    if (paths.length === 0) return
+    const { error: rmErr } = await supabase.storage.from(BUCKET).remove(paths)
+    if (rmErr) throw rmErr
+  }
+
   async download(path: string): Promise<Blob> {
     const { data, error } = await supabase.storage.from(BUCKET).download(path)
     if (error) throw error

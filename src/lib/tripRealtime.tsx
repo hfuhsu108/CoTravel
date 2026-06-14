@@ -18,14 +18,28 @@ import type { ActivityEntry, TripMemberWithProfile } from './types'
 // 事件不套 RLS 也不吃 filter（官方行為），payload 內容不可信也不完整。
 // activity_log 例外：INSERT 有套 RLS 與 filter，payload.new 可直接拿來顯示 banner。
 
-export type TableKey = 'items' | 'area_candidates' | 'transports' | 'documents' | 'packing_items'
+export type TableKey =
+  | 'items'
+  | 'area_candidates'
+  | 'transports'
+  | 'lodgings'
+  | 'documents'
+  | 'packing_items'
 
-const TABLE_KEYS: TableKey[] = ['items', 'area_candidates', 'transports', 'documents', 'packing_items']
+const TABLE_KEYS: TableKey[] = [
+  'items',
+  'area_candidates',
+  'transports',
+  'lodgings',
+  'documents',
+  'packing_items',
+]
 
 const ZERO_TICKS: Record<TableKey, number> = {
   items: 0,
   area_candidates: 0,
   transports: 0,
+  lodgings: 0,
   documents: 0,
   packing_items: 0,
 }

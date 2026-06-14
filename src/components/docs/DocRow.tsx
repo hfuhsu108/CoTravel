@@ -31,13 +31,14 @@ export default function DocRow({
       style={disabled ? { opacity: 0.5, boxShadow: 'none', filter: 'grayscale(.6)' } : undefined}
     >
       <span className="flex h-[54px] w-[46px] flex-none items-center justify-center rounded-[11px] bg-primary-soft text-primary-deep">
-        <Icon name={categoryIcon(doc.category)} size={22} />
+        <Icon name={doc.kind === 'note' ? 'edit' : categoryIcon(doc.category)} size={22} />
       </span>
 
       <div className="min-w-0 flex-1">
         <div className="break-words text-[14.5px] font-bold leading-[1.3]">{doc.file_name}</div>
         <div className="mt-[2px] text-[12.5px] font-semibold text-ink-3">
           {categoryLabel(doc.category)}
+          {doc.kind === 'note' ? ' · 備忘錄' : ''}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-[6px]">
           <Avatar
@@ -46,15 +47,17 @@ export default function DocRow({
             partner={uploader ? uploader.user_id !== meId : false}
             size={20}
           />
-          {cached ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2 py-[2px] text-[11px] font-bold text-[#1f8f6a]">
-              <Icon name="cloud" size={12} /> 離線可用
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded-full bg-line px-2 py-[2px] text-[11px] font-bold text-ink-2">
-              <Icon name="cloudoff" size={12} /> 未快取
-            </span>
-          )}
+          {/* 快取 chip 僅檔案需要；備忘錄內文隨列載入即離線可看 */}
+          {doc.kind === 'file' &&
+            (cached ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2 py-[2px] text-[11px] font-bold text-[#1f8f6a]">
+                <Icon name="cloud" size={12} /> 離線可用
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-line px-2 py-[2px] text-[11px] font-bold text-ink-2">
+                <Icon name="cloudoff" size={12} /> 未快取
+              </span>
+            ))}
           {linkedCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-[2px] text-[11px] font-bold text-primary-deep">
               <Icon name="link" size={12} /> 已連結 {linkedCount} 處

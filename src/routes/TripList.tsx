@@ -13,6 +13,8 @@ import Button from '../components/ui/Button'
 import GroupHeader from '../components/GroupHeader'
 import TripCard from '../components/TripCard'
 import NewTripSheet from '../components/NewTripSheet'
+import TripFormSheet from '../components/TripFormSheet'
+import TripActionsSheet from '../components/TripActionsSheet'
 import JoinTripSheet from '../components/JoinTripSheet'
 import ProfileSheet from '../components/ProfileSheet'
 
@@ -29,6 +31,8 @@ export default function TripList() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [sheet, setSheet] = useState<SheetKind>(null)
+  const [menuTrip, setMenuTrip] = useState<TripWithMembers | null>(null)
+  const [editTrip, setEditTrip] = useState<TripWithMembers | null>(null)
   const [pastOpen, setPastOpen] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -156,7 +160,7 @@ export default function TripList() {
                 <GroupHeader icon="pin" title="進行中" count={ongoing.length} color="var(--ok)" />
                 {ongoing.map((t) => (
                   <div key={t.id} className="mb-[14px]">
-                    <TripCard trip={t} meId={meId} big onOpen={openTrip} />
+                    <TripCard trip={t} meId={meId} big onOpen={openTrip} onMenu={setMenuTrip} />
                   </div>
                 ))}
               </>
@@ -172,7 +176,7 @@ export default function TripList() {
                 />
                 <div className="flex flex-col gap-[14px]">
                   {upcoming.map((t) => (
-                    <TripCard key={t.id} trip={t} meId={meId} onOpen={openTrip} />
+                    <TripCard key={t.id} trip={t} meId={meId} onOpen={openTrip} onMenu={setMenuTrip} />
                   ))}
                 </div>
               </>
@@ -193,7 +197,7 @@ export default function TripList() {
                   <div className="flex flex-col gap-[14px]">
                     {past.map((t) => (
                       <div key={t.id} style={{ opacity: 0.82 }}>
-                        <TripCard trip={t} meId={meId} onOpen={openTrip} />
+                        <TripCard trip={t} meId={meId} onOpen={openTrip} onMenu={setMenuTrip} />
                       </div>
                     ))}
                   </div>
@@ -232,6 +236,31 @@ export default function TripList() {
       )}
       {sheet === 'join' && <JoinTripSheet onClose={() => setSheet(null)} onJoined={handleJoined} />}
       {sheet === 'profile' && <ProfileSheet onClose={() => setSheet(null)} />}
+
+      {menuTrip && (
+        <TripActionsSheet
+          trip={menuTrip}
+          meId={meId}
+          onClose={() => setMenuTrip(null)}
+          onEdit={(t) => {
+            setMenuTrip(null)
+            setEditTrip(t)
+          }}
+          onDeleted={() => {
+            setMenuTrip(null)
+            setNotice('已刪除旅程')
+            void refresh().catch((e) => setError(errMessage(e)))
+          }}
+        />
+      )}
+      {editTrip && (
+        <TripFormSheet
+          mode="edit"
+          trip={editTrip}
+          onClose={() => setEditTrip(null)}
+          onSaved={() => void refresh().catch((e) => setError(errMessage(e)))}
+        />
+      )}
     </div>
   )
 }

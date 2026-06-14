@@ -17,6 +17,9 @@ export interface FileStorage {
   // 刪除檔案
   remove(path: string): Promise<void>
 
+  // 刪除某前綴（資料夾）下的所有檔案（刪整趟旅程時清空 <tripId>/ 用）
+  removeByPrefix(prefix: string): Promise<void>
+
   // 下載檔案內容（供 PWA 離線快取使用）
   download(path: string): Promise<Blob>
 }

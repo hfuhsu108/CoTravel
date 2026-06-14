@@ -2,12 +2,49 @@
 // 沿用 itinerary.ts 慣例：薄包裝 Supabase、出錯即 throw（訊息交給 errMessage 顯示）。
 // RLS 已限定只有該趟成員可讀寫（見 supabase/schema.sql 的 "members rw transports"）。
 import { supabase } from './supabase'
-import type { Transport, TransportMode } from './types'
+import type { Item, TransitStep, Transport, TransportMode } from './types'
 
 export async function listTransports(tripId: string): Promise<Transport[]> {
   const { data, error } = await supabase.from('transports').select('*').eq('trip_id', tripId)
   if (error) throw error
   return (data ?? []) as Transport[]
+}
+
+// 航班顯示用：機場 item 的精簡欄位（名稱/座標/時區）
+export type AirportRef = Pick<Item, 'id' | 'name' | 'lat' | 'lng' | 'timezone'>
+
+export interface FlightView {
+  transport: Transport
+  fromItem: AirportRef | null // 出發機場
+  toItem: AirportRef | null // 抵達機場
+}
+
+// 列出本趟所有航班（mode='flight'）並補上起訖機場 item（功能 5）。
+// 以兩段查詢拼裝（transports 有兩個指向 items 的外鍵，避免 embed 的關聯歧義）。
+export async function listFlights(tripId: string): Promise<FlightView[]> {
+  const { data, error } = await supabase
+    .from('transports')
+    .select('*')
+    .eq('trip_id', tripId)
+    .eq('mode', 'flight')
+    .order('depart_local', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  const flights = (data ?? []) as Transport[]
+  if (flights.length === 0) return []
+
+  const ids = [...new Set(flights.flatMap((f) => [f.from_item_id, f.to_item_id]))]
+  const { data: itemRows, error: itemErr } = await supabase
+    .from('items')
+    .select('id,name,lat,lng,timezone')
+    .in('id', ids)
+  if (itemErr) throw itemErr
+  const byId = new Map((itemRows ?? []).map((r) => [(r as AirportRef).id, r as AirportRef]))
+
+  return flights.map((f) => ({
+    transport: f,
+    fromItem: byId.get(f.from_item_id) ?? null,
+    toItem: byId.get(f.to_item_id) ?? null,
+  }))
 }
 
 export interface UpsertTransportInput {
@@ -18,8 +55,16 @@ export interface UpsertTransportInput {
   duration_min?: number | null
   distance_m?: number | null
   custom_label?: string | null
+  flight_no?: string | null
   cost_text?: string | null
   route_polyline?: string | null
+  depart_local?: string | null
+  depart_tz?: string | null
+  arrive_local?: string | null
+  arrive_tz?: string | null
+  depart_terminal?: string | null
+  arrive_terminal?: string | null
+  steps?: TransitStep[] | null
   notes?: string | null
 }
 
@@ -37,8 +82,16 @@ export async function upsertTransport(input: UpsertTransportInput): Promise<Tran
         duration_min: input.duration_min ?? null,
         distance_m: input.distance_m ?? null,
         custom_label: input.custom_label ?? null,
+        flight_no: input.flight_no ?? null,
         cost_text: input.cost_text ?? null,
         route_polyline: input.route_polyline ?? null,
+        depart_local: input.depart_local ?? null,
+        depart_tz: input.depart_tz ?? null,
+        arrive_local: input.arrive_local ?? null,
+        arrive_tz: input.arrive_tz ?? null,
+        depart_terminal: input.depart_terminal ?? null,
+        arrive_terminal: input.arrive_terminal ?? null,
+        steps: input.steps ?? null,
         notes: input.notes ?? null,
       },
       { onConflict: 'from_item_id,to_item_id' },

@@ -3,6 +3,7 @@ import type { Document } from '../../lib/types'
 import { openDocument } from '../../lib/documentView'
 import { errMessage } from '../../lib/errMessage'
 import Icon from '../Icon'
+import NoteViewer from './NoteViewer'
 import { categoryIcon, categoryLabel } from './docMeta'
 
 interface LinkedDocsProps {
@@ -16,6 +17,7 @@ interface LinkedDocsProps {
 export default function LinkedDocs({ docs, onManage, disabledReason }: LinkedDocsProps) {
   const [open, setOpen] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [viewNote, setViewNote] = useState<Document | null>(null) // 檢視中的 Markdown 備忘錄（功能 7）
 
   async function view(path: string) {
     setError(null)
@@ -65,21 +67,35 @@ export default function LinkedDocs({ docs, onManage, disabledReason }: LinkedDoc
                   className="flex items-center gap-[11px] rounded-lg bg-surface p-[10px] shadow-1"
                 >
                   <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-primary-soft text-primary-deep">
-                    <Icon name={categoryIcon(d.category)} size={18} />
+                    <Icon name={d.kind === 'note' ? 'edit' : categoryIcon(d.category)} size={18} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[14px] font-bold">{d.file_name}</div>
                     <div className="text-[12px] font-semibold text-ink-3">
                       {categoryLabel(d.category)}
+                      {d.kind === 'note' ? ' · 備忘錄' : ''}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void view(d.storage_path)}
-                    className="flex flex-none items-center gap-1 rounded-md bg-primary-soft px-3 py-[8px] text-[13px] font-bold text-primary-deep active:scale-95"
-                  >
-                    <Icon name="doc" size={15} /> 檢視
-                  </button>
+                  {/* 備忘錄開內建檢視器（功能 7）；檔案開連結 */}
+                  {d.kind === 'note' ? (
+                    <button
+                      type="button"
+                      onClick={() => setViewNote(d)}
+                      className="flex flex-none items-center gap-1 rounded-md bg-primary-soft px-3 py-[8px] text-[13px] font-bold text-primary-deep active:scale-95"
+                    >
+                      <Icon name="doc" size={15} /> 檢視
+                    </button>
+                  ) : (
+                    d.storage_path && (
+                      <button
+                        type="button"
+                        onClick={() => void view(d.storage_path as string)}
+                        className="flex flex-none items-center gap-1 rounded-md bg-primary-soft px-3 py-[8px] text-[13px] font-bold text-primary-deep active:scale-95"
+                      >
+                        <Icon name="doc" size={15} /> 檢視
+                      </button>
+                    )
+                  )}
                 </div>
               ))
             )}
@@ -92,6 +108,9 @@ export default function LinkedDocs({ docs, onManage, disabledReason }: LinkedDoc
           {error}
         </div>
       )}
+
+      {/* 備忘錄唯讀檢視（無 onSaved/onDelete）；巢狀於詳情浮層內，自然疊在其上 */}
+      {viewNote && <NoteViewer doc={viewNote} onClose={() => setViewNote(null)} />}
     </div>
   )
 }

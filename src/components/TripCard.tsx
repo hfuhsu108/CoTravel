@@ -1,4 +1,5 @@
 import Avatar from './Avatar'
+import Icon from './Icon'
 import MiniMapBg from './MiniMapBg'
 import { getTripBadge, getTripStatus, formatDateRange } from '../lib/tripStatus'
 import type { TripWithMembers } from '../lib/types'
@@ -16,9 +17,10 @@ interface TripCardProps {
   meId: string
   big?: boolean
   onOpen: (trip: TripWithMembers) => void
+  onMenu: (trip: TripWithMembers) => void
 }
 
-export default function TripCard({ trip, meId, big = false, onOpen }: TripCardProps) {
+export default function TripCard({ trip, meId, big = false, onOpen, onMenu }: TripCardProps) {
   const status = getTripStatus(trip)
   const live = status === 'ongoing'
   const badge = getTripBadge(trip)
@@ -32,48 +34,25 @@ export default function TripCard({ trip, meId, big = false, onOpen }: TripCardPr
     .slice(0, 2)
 
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(trip)}
-      className="block w-full animate-fadeup overflow-hidden rounded-lg text-left"
+    <div
+      className="relative animate-fadeup overflow-hidden rounded-lg"
       style={{
         boxShadow: live ? '0 14px 32px rgba(122,108,240,0.22)' : 'var(--sh-2)',
         outline: live ? '2px solid var(--primary)' : undefined,
       }}
     >
-      <div
-        className={`ph ${cover === 'warm' ? 'ph-warm' : cover === 'cool' ? 'ph-cool' : ''} relative flex items-end`}
-        style={{ height: big ? 138 : 104 }}
-      >
-        {cover === 'map' && <MiniMapBg />}
+      <button type="button" onClick={() => onOpen(trip)} className="block w-full text-left">
         <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(20,12,40,0.5))' }}
-        />
-        <span className="ph-label absolute left-3 top-[10px] z-[2]">{coverLabel}</span>
-        <div className="absolute right-[10px] top-[10px] z-[3]">
-          {live ? (
-            <span
-              className="inline-flex items-center gap-[6px] rounded-full px-[11px] py-[5px] text-[12.5px] font-bold"
-              style={{ background: '#ffeef0', color: '#d6435f' }}
-            >
-              <span className="inline-block h-[7px] w-[7px] rounded-full bg-current" />
-              {badge}
-            </span>
-          ) : (
-            <span
-              className="inline-flex items-center rounded-full px-[11px] py-[5px] text-[12.5px] font-bold"
-              style={
-                status === 'upcoming'
-                  ? { background: 'rgba(255,255,255,0.92)', color: 'var(--primary-deep)' }
-                  : { background: 'rgba(255,255,255,0.85)', color: 'var(--ink-2)' }
-              }
-            >
-              {badge}
-            </span>
-          )}
-        </div>
-        <div className="relative z-[2] flex w-full items-end justify-between px-[14px] pb-3 text-white">
+          className={`ph ${cover === 'warm' ? 'ph-warm' : cover === 'cool' ? 'ph-cool' : ''} relative flex items-end`}
+          style={{ height: big ? 138 : 104 }}
+        >
+          {cover === 'map' && <MiniMapBg />}
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(20,12,40,0.5))' }}
+          />
+          <span className="ph-label absolute left-3 top-[10px] z-[2]">{coverLabel}</span>
+          <div className="relative z-[2] flex w-full items-end justify-between px-[14px] pb-3 text-white">
           <div>
             <div
               className="font-bold"
@@ -101,8 +80,41 @@ export default function TripCard({ trip, meId, big = false, onOpen }: TripCardPr
               />
             ))}
           </div>
+          </div>
         </div>
+      </button>
+
+      {/* 狀態徽章 + 三點選單（卡片外層 overlay，與卡片按鈕同層，點擊不觸發進入） */}
+      <div className="absolute right-[10px] top-[10px] z-[5] flex items-center gap-[7px]">
+        {live ? (
+          <span
+            className="inline-flex items-center gap-[6px] rounded-full px-[11px] py-[5px] text-[12.5px] font-bold"
+            style={{ background: '#ffeef0', color: '#d6435f' }}
+          >
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-current" />
+            {badge}
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center rounded-full px-[11px] py-[5px] text-[12.5px] font-bold"
+            style={
+              status === 'upcoming'
+                ? { background: 'rgba(255,255,255,0.92)', color: 'var(--primary-deep)' }
+                : { background: 'rgba(255,255,255,0.85)', color: 'var(--ink-2)' }
+            }
+          >
+            {badge}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onMenu(trip)}
+          aria-label="行程選單"
+          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-white/85 text-ink-2 shadow-1 active:scale-90"
+        >
+          <Icon name="more" size={18} fill />
+        </button>
       </div>
-    </button>
+    </div>
   )
 }

@@ -18,11 +18,14 @@ import { getTripWithMembers } from '../../lib/api'
 import {
   addCandidate,
   addItem,
+  displayName,
+  duplicateItem,
   ensureDays,
   listCandidatesByItems,
   listItems,
   moveItemToDay,
   removeCandidate,
+  removeFromBookmarks,
   removeItem,
   reorderItems,
   setCandidateChosen,
@@ -31,6 +34,9 @@ import {
 } from '../../lib/itinerary'
 import { listTransports, removeTransport, upsertTransport } from '../../lib/transports'
 import { logActivity } from '../../lib/activity'
+import { tzForCoords } from '../../lib/time'
+import { computeDaySchedule } from '../../lib/schedule'
+import { computeDayWarnings } from '../../lib/scheduleWarnings'
 import { useTripRealtime } from '../../lib/tripRealtime'
 import { errMessage } from '../../lib/errMessage'
 import { env } from '../../lib/env'
@@ -43,6 +49,10 @@ import MapTopBar from '../../components/map/MapTopBar'
 import DayTabs from '../../components/map/DayTabs'
 import DaySidebar from '../../components/map/DaySidebar'
 import MarkerPopup from '../../components/map/MarkerPopup'
+import BookmarkListSheet from '../../components/map/BookmarkListSheet'
+import ListPickerSheet from '../../components/map/ListPickerSheet'
+import PoiPopup from '../../components/map/PoiPopup'
+import type { PoiDetails } from '../../lib/places'
 import DetailSheet from '../../components/map/detail/DetailSheet'
 import TransitDetail, { type TransitSavePayload } from '../../components/map/detail/TransitDetail'
 import PlaceSearch, { type PickKind, type PickedPlace } from '../../components/map/PlaceSearch'
@@ -92,6 +102,12 @@ export default function MapTab() {
   // 開啟中的交通編輯（相鄰 from→to 兩項目 id）
   const [transitEdit, setTransitEdit] = useState<{ fromId: string; toId: string } | null>(null)
   const [notifOpen, setNotifOpen] = useState(false)
+  // 功能 4：點 Google POI 浮出的資訊卡（資料來自 Places 即時查詢）
+  const [poi, setPoi] = useState<PoiDetails | null>(null)
+  // 功能 2：書籤（收藏）列表
+  const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  // 功能 2：加入書籤前的暫存地點（先選清單再 addItem，像 Google 地圖）
+  const [pendingBookmark, setPendingBookmark] = useState<PickedPlace | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -256,7 +272,55 @@ export default function MapTab() {
         .sort((a, b) => a.order_index - b.order_index),
     [items, currentDayId],
   )
+  // 功能 4/8：當天三時間推算（抵達/停留/離開、跨站串接）與時間防呆警告
+  const daySchedule = useMemo(
+    () => computeDaySchedule(dayItems, transportByPair, currentDay?.date ?? null),
+    [dayItems, transportByPair, currentDay?.date],
+  )
+  const flightArrivalItemIds = useMemo(
+    () => new Set(transports.filter((t) => t.mode === 'flight').map((t) => t.to_item_id)),
+    [transports],
+  )
+  const dayWarnings = useMemo(
+    () => computeDayWarnings(dayItems, transportByPair, daySchedule, flightArrivalItemIds),
+    [dayItems, transportByPair, daySchedule, flightArrivalItemIds],
+  )
+  const dayWarningCount = useMemo(() => {
+    let n = 0
+    for (const it of dayItems) n += dayWarnings.get(it.id)?.length ?? 0
+    return n
+  }, [dayItems, dayWarnings])
+
+  // 地圖愛心：純書籤（未排入）；書籤列表：所有已收藏（含排入某天者，故與地圖愛心分開）
   const bookmarks = useMemo(() => items.filter((i) => i.status === 'bookmark'), [items])
+  const bookmarkList = useMemo(() => items.filter((i) => i.is_bookmarked), [items])
+  // 全趟用過的標籤（書籤列表貼標籤時供快速選用，達成「分類可重用」）
+  const knownTags = useMemo(() => {
+    const s = new Set<string>()
+    for (const i of items) for (const t of i.tags) s.add(t)
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [items])
+
+  // 功能 3：地圖預設視野退路。當天無項目 → 旅程目的地座標；再無 → 整趟所有項目座標。
+  const fallbackCenter = useMemo<google.maps.LatLngLiteral | null>(
+    () =>
+      trip?.dest_lat != null && trip?.dest_lng != null
+        ? { lat: trip.dest_lat, lng: trip.dest_lng }
+        : null,
+    [trip?.dest_lat, trip?.dest_lng],
+  )
+  const allCoords = useMemo(
+    () =>
+      items
+        .filter((i) => i.lat != null && i.lng != null)
+        .map((i) => ({ lat: i.lat as number, lng: i.lng as number })),
+    [items],
+  )
+  // 功能 5：旅程主時區（由目的地座標推得；詳情頁據此判斷地點是否在不同時區）
+  const tripTz = useMemo(
+    () => tzForCoords(trip?.dest_lat ?? null, trip?.dest_lng ?? null),
+    [trip?.dest_lat, trip?.dest_lng],
+  )
 
   const detailItem = items.find((i) => i.id === detailItemId) ?? null
   const popupItem = items.find((i) => i.id === popupItemId) ?? null
@@ -300,6 +364,12 @@ export default function MapTab() {
 
   // ---- 加入地點 / 候選（PlaceSearch 的 onPick；失敗則 throw 讓搜尋頁內顯示） ----
   async function handlePick(place: PickedPlace, kind: PickKind) {
+    // 書籤改兩段式：先關搜尋、再跳清單選擇（見 handleConfirmBookmark），不在此直接 addItem
+    if (kind === 'bookmark') {
+      setPendingBookmark(place)
+      setSearch(null)
+      return
+    }
     if (kind === 'candidate' && search?.targetItemId) {
       const areaName = items.find((i) => i.id === search.targetItemId)?.name ?? '區域'
       const cand = await addCandidate({
@@ -315,8 +385,8 @@ export default function MapTab() {
       const newItem = await addItem({
         trip_id: tripId,
         type: 'point',
-        status: kind === 'bookmark' ? 'bookmark' : 'scheduled',
-        day_id: kind === 'bookmark' ? null : currentDayId,
+        status: 'scheduled',
+        day_id: currentDayId,
         name: place.name,
         lat: place.lat,
         lng: place.lng,
@@ -324,16 +394,63 @@ export default function MapTab() {
         photo_url: place.photo_url,
       })
       setItems((its) => [...its, newItem])
-      logActivity(
-        tripId,
-        meId,
-        'item_add',
-        kind === 'bookmark'
-          ? `把「${place.name}」加進書籤`
-          : `把「${place.name}」加到 ${dayLabelOf(currentDayId)}`,
-      )
+      logActivity(tripId, meId, 'item_add', `把「${place.name}」加到 ${dayLabelOf(currentDayId)}`)
     }
     setSearch(null)
+  }
+
+  // 功能 2：選好清單後才真正建立書籤（tags 即清單；至少一個）。失敗 throw 給 ListPickerSheet 顯示。
+  async function handleConfirmBookmark(lists: string[]) {
+    if (!pendingBookmark) return
+    const place = pendingBookmark
+    const newItem = await addItem({
+      trip_id: tripId,
+      type: 'point',
+      status: 'bookmark',
+      day_id: null,
+      name: place.name,
+      lat: place.lat,
+      lng: place.lng,
+      google_place_id: place.google_place_id,
+      photo_url: place.photo_url,
+      is_bookmarked: true,
+      tags: lists,
+    })
+    setItems((its) => [...its, newItem])
+    logActivity(tripId, meId, 'item_add', `把「${place.name}」加進書籤（${lists.join('、')}）`)
+    setPendingBookmark(null)
+  }
+
+  // 功能 4：把 POI 卡片的地點加入行程（當天）或書籤；沿用 addItem。
+  // 失敗時 throw 給 PoiPopup 顯示 inline 錯誤（成功才 setPoi(null) 關卡）。
+  async function handleAddPoi(kind: 'point' | 'bookmark') {
+    if (!poi) return
+    // 書籤改兩段式：把 POI 帶進 pendingBookmark、關卡 → 跳清單選擇
+    if (kind === 'bookmark') {
+      setPendingBookmark({
+        name: poi.name,
+        lat: poi.lat,
+        lng: poi.lng,
+        google_place_id: poi.google_place_id,
+        photo_url: poi.photo_url,
+      })
+      setPoi(null)
+      return
+    }
+    const newItem = await addItem({
+      trip_id: tripId,
+      type: 'point',
+      status: 'scheduled',
+      day_id: currentDayId,
+      name: poi.name,
+      lat: poi.lat,
+      lng: poi.lng,
+      google_place_id: poi.google_place_id,
+      photo_url: poi.photo_url,
+    })
+    setItems((its) => [...its, newItem])
+    logActivity(tripId, meId, 'item_add', `把「${poi.name}」加到 ${dayLabelOf(currentDayId)}`)
+    setPoi(null)
   }
 
   async function handleUpdateItem(id: string, patch: ItemPatch) {
@@ -358,6 +475,36 @@ export default function MapTab() {
       setPopupItemId(null)
       setSelectedItemId(null)
       logActivity(tripId, meId, 'item_remove', `移除了「${name}」`)
+    } catch (e) {
+      setError(errMessage(e))
+    }
+  }
+
+  // 功能 2：從書籤列表移除。已排入某天 → 只清收藏旗標（保留行程）；純書籤 → 整筆刪。
+  async function handleRemoveBookmark(item: Item) {
+    try {
+      const updated = await removeFromBookmarks(item)
+      if (updated) {
+        setItems((its) => its.map((i) => (i.id === item.id ? updated : i)))
+        logActivity(tripId, meId, 'item_remove', `把「${item.name}」移出書籤`)
+      } else {
+        setItems((its) => its.filter((i) => i.id !== item.id))
+        setCandidates((cs) => cs.filter((c) => c.item_id !== item.id))
+        setTransports((ts) => ts.filter((t) => t.from_item_id !== item.id && t.to_item_id !== item.id))
+        logActivity(tripId, meId, 'item_remove', `移除了書籤「${item.name}」`)
+      }
+    } catch (e) {
+      setError(errMessage(e))
+    }
+  }
+
+  // 功能 3：複製景點（插在原項目之後）。其後項目 order_index 在 DB 已順移，故整批重抓。
+  async function handleDuplicate(item: Item) {
+    try {
+      await duplicateItem(item)
+      setItems(await listItems(tripId))
+      setDetailItemId(null)
+      logActivity(tripId, meId, 'item_add', `複製了「${displayName(item)}」`)
     } catch (e) {
       setError(errMessage(e))
     }
@@ -464,6 +611,7 @@ export default function MapTab() {
     } else {
       setSelectedItemId(null)
       setPopupItemId(null)
+      setPoi(null)
     }
   }
 
@@ -540,11 +688,21 @@ export default function MapTab() {
           transportByPair={transportByPair}
           selectedItemId={selectedItemId}
           showRoute={showRoute}
+          areaMode={areaMode}
+          fallbackCenter={fallbackCenter}
+          allCoords={allCoords}
           onSelectItem={(it) => {
             setSelectedItemId(it.id)
             setPopupItemId(it.id)
+            setPoi(null)
           }}
           onMapClick={handleMapClick}
+          onPoiSelected={(p) => {
+            setPoi(p)
+            setPopupItemId(null)
+            setSelectedItemId(null)
+          }}
+          onPoiError={(m) => setError(m)}
         />
 
         {trip && (
@@ -626,6 +784,11 @@ export default function MapTab() {
               }}
               onToggleCandidate={handleToggleCandidate}
               onAddItem={() => setAddMenuOpen(true)}
+              onOpenBookmarks={() => setBookmarkOpen(true)}
+              bookmarkCount={bookmarkList.length}
+              schedule={daySchedule}
+              warningsByItem={dayWarnings}
+              warningCount={dayWarningCount}
             />
           )}
         </DndContext>
@@ -661,6 +824,16 @@ export default function MapTab() {
           />
         )}
 
+        {/* POI 資訊卡（點 Google 地標；圈區域模式時不顯示） */}
+        {poi && !areaMode && (
+          <PoiPopup
+            poi={poi}
+            dayLabel={dayLabelOf(currentDayId)}
+            onClose={() => setPoi(null)}
+            onAdd={handleAddPoi}
+          />
+        )}
+
         {/* 詳情頁（畫面 3） */}
         {detailItem && trip && (
           <DetailSheet
@@ -670,9 +843,13 @@ export default function MapTab() {
             members={trip.members}
             meId={meId}
             stationLabel={stationLabelFor(detailItem)}
+            tripTz={tripTz}
+            effTime={daySchedule.get(detailItem.id) ?? null}
+            warnings={dayWarnings.get(detailItem.id) ?? []}
             onClose={() => setDetailItemId(null)}
             onUpdate={(patch) => handleUpdateItem(detailItem.id, patch)}
             onRemove={() => handleRemoveItem(detailItem.id)}
+            onDuplicate={() => handleDuplicate(detailItem)}
             onMoveDay={(dayId) => handleMoveDay(detailItem.id, dayId)}
             onToggleCandidate={handleToggleCandidate}
             onRemoveCandidate={handleRemoveCandidate}
@@ -717,6 +894,33 @@ export default function MapTab() {
             members={trip.members}
             meId={meId}
             onClose={() => setNotifOpen(false)}
+          />
+        )}
+
+        {/* 書籤（收藏）列表 */}
+        {bookmarkOpen && (
+          <BookmarkListSheet
+            bookmarks={bookmarkList}
+            days={days}
+            knownTags={knownTags}
+            onClose={() => setBookmarkOpen(false)}
+            onAddBookmark={() => {
+              setBookmarkOpen(false)
+              setSearch({ mode: 'add' })
+            }}
+            onScheduleToDay={(item, dayId) => handleMoveDay(item.id, dayId)}
+            onRemove={handleRemoveBookmark}
+            onUpdateTags={(item, tags) => handleUpdateItem(item.id, { tags })}
+          />
+        )}
+
+        {/* 加入書籤前的清單選擇（像 Google 地圖「儲存到清單」） */}
+        {pendingBookmark && (
+          <ListPickerSheet
+            placeName={pendingBookmark.name}
+            knownLists={knownTags}
+            onClose={() => setPendingBookmark(null)}
+            onConfirm={handleConfirmBookmark}
           />
         )}
 

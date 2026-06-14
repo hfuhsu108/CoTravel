@@ -14,6 +14,8 @@ export function modeWord(mode: TransportMode): string {
       return '騎車'
     case 'custom':
       return '自定義'
+    case 'flight':
+      return '航班'
   }
 }
 
@@ -29,11 +31,20 @@ export function modeIcon(mode: TransportMode): IconName {
       return 'walk' // 無單車圖示，暫用步行；本階段 UI 未提供 bike
     case 'custom':
       return 'nav'
+    case 'flight':
+      return 'plane'
   }
 }
 
-// 交通列顯示標籤：自定義優先用使用者填的 custom_label，否則用模式中文
+// 交通列顯示標籤：航班用編號、自定義用 custom_label、大眾運輸有步驟時顯示路線（公車號），否則模式中文
 export function transportLabel(t: Transport): string {
+  if (t.mode === 'flight') return t.flight_no?.trim() || '航班'
   if (t.mode === 'custom') return t.custom_label?.trim() || '自定義交通'
+  if (t.mode === 'transit' && t.steps) {
+    const lines = t.steps
+      .filter((s) => s.mode === 'transit')
+      .map((s) => `${s.vehicle ?? ''}${s.line ?? ''}`.trim() || '搭乘')
+    if (lines.length > 0) return lines.join('→')
+  }
   return modeWord(t.mode)
 }

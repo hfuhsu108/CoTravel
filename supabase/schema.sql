@@ -26,9 +26,16 @@ create table if not exists trips (
   end_date date,
   cover_image_url text,
   invite_code text unique,                -- 旅程層級邀請碼（階段 1 新增；由 create_trip 產生）
+  dest_lat double precision,              -- 目的地座標（功能 3：地圖預設範圍退路；由地點搜尋帶入）
+  dest_lng double precision,
+  dest_place_id text,
   created_by uuid references auth.users(id),
   created_at timestamptz default now()
 );
+-- 既有資料庫自我修復：補上目的地座標欄（新裝者已由上方 inline 帶入；冪等可重跑）
+alter table trips add column if not exists dest_lat double precision;
+alter table trips add column if not exists dest_lng double precision;
+alter table trips add column if not exists dest_place_id text;
 
 -- 趟次成員（兩人共編的關鍵）
 create table if not exists trip_members (
@@ -91,12 +98,41 @@ create table if not exists items (
   scheduled_time time,
   time_slot text,
   radius_m int,
-  category text,
+  is_bookmarked boolean not null default false,  -- 收藏旗標（功能 2：與 status/day_id 脫鉤，排入某天後仍可保留收藏）
+  tags text[] not null default '{}',             -- 清單（功能 2：Google 地圖式；一個地點可在多個清單，取代舊單一 category）
+  timezone text,                                 -- 該地點 IANA 時區（功能 5：由座標自動推得；通知換算用）
+  alias text,                                    -- 自定義別名（顯示用；空則用 name）
+  stay_minutes int,                              -- 停留分鐘（三時間：抵達=scheduled_time、離開=抵達+停留）
+  departure_time time,                           -- 離開時間（三時間）
+  lodging_auto boolean not null default false,   -- 住宿項目是否為自動產生的頭/尾（手動複製本=false，住宿編輯重產生時不刪）
   order_index int not null default 0,
   notes text,
   created_by uuid references auth.users(id),
   created_at timestamptz default now()
 );
+
+-- 既有資料庫自我修復（功能 2）：補書籤旗標與多標籤欄，回填後移除舊單一 category。皆冪等可重跑。
+alter table items add column if not exists is_bookmarked boolean not null default false;
+alter table items add column if not exists tags text[] not null default '{}';
+alter table items add column if not exists timezone text;  -- 功能 5：地點時區（由座標推得）
+alter table items add column if not exists alias text;
+alter table items add column if not exists stay_minutes int;
+alter table items add column if not exists departure_time time;
+alter table items add column if not exists lodging_auto boolean not null default false;
+do $$
+begin
+  -- 舊書籤（status='bookmark'）→ 標記為已收藏
+  update items set is_bookmarked = true where status = 'bookmark' and is_bookmarked = false;
+  -- 舊單一 category → tags 陣列（僅在欄位仍存在時），再 drop 掉 category
+  if exists (
+    select 1 from information_schema.columns
+    where table_name = 'items' and column_name = 'category'
+  ) then
+    update items set tags = array[category]
+      where category is not null and btrim(category) <> '' and tags = '{}';
+    alter table items drop column category;
+  end if;
+end $$;
 
 -- 區域內的候選店家（不排序）
 create table if not exists area_candidates (
@@ -117,11 +153,17 @@ create table if not exists documents (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid references trips(id) on delete cascade,
   category text not null,                 -- flight | lodging | document | other
-  file_name text not null,
-  storage_path text not null,
+  kind text not null default 'file',      -- file（上傳檔案）| note（Markdown 備忘錄，功能 6）
+  file_name text not null,                -- 檔案原始檔名；備忘錄則存標題
+  storage_path text,                      -- 檔案的 Storage 路徑；備忘錄為 null
+  content text,                           -- 備忘錄的 Markdown 內文（kind='note' 時）
   uploaded_by uuid references auth.users(id),
   created_at timestamptz default now()
 );
+-- 既有資料庫自我修復（功能 6）：補備忘錄欄位、並把 storage_path 放寬為可空。冪等可重跑。
+alter table documents add column if not exists kind text not null default 'file';
+alter table documents add column if not exists content text;
+alter table documents alter column storage_path drop not null;
 
 -- 相鄰項目間的交通。連結車票文件改走多對多關聯表（document_transports），故不再有 document_id 欄位。
 create table if not exists transports (
@@ -129,16 +171,35 @@ create table if not exists transports (
   trip_id uuid references trips(id) on delete cascade,
   from_item_id uuid references items(id) on delete cascade,
   to_item_id uuid references items(id) on delete cascade,
-  mode text not null,                     -- walk | transit | drive | bike | custom
+  mode text not null,                     -- walk | transit | drive | bike | custom | flight
   duration_min int,
   distance_m int,
   custom_label text,                      -- 自定義時用：'新幹線' '包車'
+  flight_no text,                         -- 航班編號（功能 5：mode='flight' 時，如 'BR198'）
   cost_text text,                         -- 費用顯示字串，如 '¥240'（幣別多樣，純顯示；階段 3 新增）
   route_polyline text,                    -- Google 路線編碼（可選快取，畫在主地圖）
+  -- 航班/跨時區段的起訖當地時間（功能 5）：local 為無時區的當地牆鐘，tz 為各自 IANA 時區。
+  -- 兩者 + tz 可算實際飛行時數，並為未來登機通知算出 UTC 時刻（見 src/lib/time.ts）。
+  depart_local timestamp,
+  depart_tz text,
+  arrive_local timestamp,
+  arrive_tz text,
+  depart_terminal text,                   -- 出發航廈（航班）
+  arrive_terminal text,                   -- 抵達航廈（航班）
+  steps jsonb,                            -- 路線步驟摘要（多路線選定後存，顯示公車號/轉乘步驟）
   notes text,
   created_at timestamptz default now(),
   unique (from_item_id, to_item_id)       -- 一段交通一列（以相鄰對為鍵 upsert，防併發重複）
 );
+-- 既有資料庫自我修復（功能 5）：補航班跨時區起訖欄位與航班編號。冪等可重跑。
+alter table transports add column if not exists depart_local timestamp;
+alter table transports add column if not exists depart_tz text;
+alter table transports add column if not exists arrive_local timestamp;
+alter table transports add column if not exists arrive_tz text;
+alter table transports add column if not exists flight_no text;
+alter table transports add column if not exists depart_terminal text;
+alter table transports add column if not exists arrive_terminal text;
+alter table transports add column if not exists steps jsonb;
 
 -- 文件 ↔ 行程項目 / 交通 的多對多連結（一項目/交通可連多文件，一文件可連多項目/交通）
 create table if not exists document_items (
@@ -188,6 +249,26 @@ begin
       unique (from_item_id, to_item_id);
   end if;
 end $$;
+
+-- 住宿（比照航班：在文件→住宿新增；自動在對應日期頭尾建住宿項目，見 items.lodging_id）。
+-- 置於 documents 之後，doc_id 才能 inline 外鍵到訂房單。
+create table if not exists lodgings (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references trips(id) on delete cascade,
+  name text not null,                     -- 飯店名
+  lat double precision,
+  lng double precision,
+  google_place_id text,
+  timezone text,                          -- 由座標推得（住宿以日期為主，tz 備用）
+  check_in date not null,                 -- 入住日
+  check_out date not null,                -- 退房日
+  doc_id uuid references documents(id) on delete set null,  -- 訂房單（選填）
+  notes text,                             -- 訂房代號 / 房型…
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+-- 自動產生的住宿項目掛在 lodgings 下，住宿刪除時連帶清掉。items 表先於 lodgings 建立，故以 alter 補欄。
+alter table items add column if not exists lodging_id uuid references lodgings(id) on delete cascade;
 
 -- 行李清單（依個人分）
 create table if not exists packing_items (
@@ -279,12 +360,17 @@ create trigger on_auth_user_created
 -- 4. RPC：建立旅程 / 用邀請碼加入（security definer，原子且安全）
 -- ----------------------------------------------------------------
 
--- 建立旅程：產生唯一 6 碼邀請碼 + 把自己加為 owner，一次原子完成
+-- 建立旅程：產生唯一 6 碼邀請碼 + 把自己加為 owner，一次原子完成。
+-- 目的地座標（功能 3）由 client 的地點搜尋帶入；先 drop 舊 4 參數簽章避免多載歧義。
+drop function if exists create_trip(text, text, date, date);
 create or replace function create_trip(
   p_name text,
   p_destination text default null,
   p_start_date date default null,
-  p_end_date date default null
+  p_end_date date default null,
+  p_dest_lat double precision default null,
+  p_dest_lng double precision default null,
+  p_dest_place_id text default null
 )
 returns trips
 language plpgsql
@@ -314,13 +400,16 @@ begin
     exit when not exists (select 1 from trips where invite_code = v_code);
   end loop;
 
-  insert into trips (name, destination, start_date, end_date, invite_code, created_by)
+  insert into trips (name, destination, start_date, end_date, invite_code, dest_lat, dest_lng, dest_place_id, created_by)
   values (
     btrim(p_name),
     nullif(btrim(coalesce(p_destination, '')), ''),
     p_start_date,
     p_end_date,
     v_code,
+    p_dest_lat,
+    p_dest_lng,
+    nullif(btrim(coalesce(p_dest_place_id, '')), ''),
     v_uid
   )
   returning * into v_trip;
@@ -371,7 +460,7 @@ begin
 end;
 $$;
 
-grant execute on function create_trip(text, text, date, date) to authenticated;
+grant execute on function create_trip(text, text, date, date, double precision, double precision, text) to authenticated;
 grant execute on function join_trip_by_code(text) to authenticated;
 
 -- ----------------------------------------------------------------
@@ -384,6 +473,7 @@ alter table days            enable row level security;
 alter table items           enable row level security;
 alter table area_candidates enable row level security;
 alter table transports      enable row level security;
+alter table lodgings        enable row level security;
 alter table documents       enable row level security;
 alter table document_items      enable row level security;
 alter table document_transports enable row level security;
@@ -433,6 +523,10 @@ create policy "members rw items" on items
 
 drop policy if exists "members rw transports" on transports;
 create policy "members rw transports" on transports
+  for all using (is_trip_member(trip_id)) with check (is_trip_member(trip_id));
+
+drop policy if exists "members rw lodgings" on lodgings;
+create policy "members rw lodgings" on lodgings
   for all using (is_trip_member(trip_id)) with check (is_trip_member(trip_id));
 
 drop policy if exists "members rw documents" on documents;
@@ -524,7 +618,7 @@ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
-  foreach t in array array['items','area_candidates','transports','documents','packing_items','activity_log'] loop
+  foreach t in array array['items','area_candidates','transports','lodgings','documents','packing_items','activity_log'] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

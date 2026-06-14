@@ -30,6 +30,7 @@ export default function DocActionsSheet({
   const [error, setError] = useState<string | null>(null)
 
   async function handleView() {
+    if (!doc.storage_path) return // 備忘錄無檔（不會走到此頁）；型別防護
     setError(null)
     try {
       await openDocument(doc.storage_path)

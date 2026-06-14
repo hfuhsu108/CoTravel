@@ -15,11 +15,16 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.45.4",
     "@vis.gl/react-google-maps": "^1.8.3",
+    "luxon": "^3.7.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.26.2",
+    "remark-gfm": "^4.0.1",
+    "tz-lookup": "^6.1.25"
   },
   "devDependencies": {
+    "@types/luxon": "^3.7.1",
     "@types/node": "^20.19.41",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",

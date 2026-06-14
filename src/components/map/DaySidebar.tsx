@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { AreaCandidate, Day, Item, Transport } from '../../lib/types'
+import type { EffTime } from '../../lib/schedule'
 import { formatDayLabel } from '../../lib/date'
 import Icon from '../Icon'
 import PlaceCard from './cards/PlaceCard'
@@ -21,6 +22,11 @@ interface DaySidebarProps {
   onSelectTransport: (from: Item, to: Item, transport: Transport | null) => void
   onToggleCandidate: (candidate: AreaCandidate) => void
   onAddItem?: () => void
+  onOpenBookmarks?: () => void
+  bookmarkCount?: number
+  schedule?: Map<string, EffTime> // 有效時間（抵達/離開顯示用）
+  warningsByItem?: Map<string, string[]> // 各項目時間警告
+  warningCount?: number // 當天警告總數
 }
 
 // 當日行程側欄（畫面 2）：底部升起的圓角面板，列出定點/區域卡（混排），底部「＋ 加項目」。
@@ -38,6 +44,11 @@ export default function DaySidebar({
   onSelectTransport,
   onToggleCandidate,
   onAddItem,
+  onOpenBookmarks,
+  bookmarkCount = 0,
+  schedule,
+  warningsByItem,
+  warningCount = 0,
 }: DaySidebarProps) {
   // 編號只算定點（依 order_index）；區域不給編號
   const points = items.filter((i) => i.type === 'point')
@@ -55,11 +66,31 @@ export default function DaySidebar({
           <div className="text-[17px] font-extrabold">
             {day ? `${formatDayLabel(day.date)}・Day ${day.day_index}` : '行程'}
           </div>
-          <div className="text-[12.5px] font-semibold text-ink-3">
-            {items.length > 0 ? `${points.length} 個地點` : '尚無安排'}
+          <div className="flex items-center gap-2 text-[12.5px] font-semibold text-ink-3">
+            <span>{items.length > 0 ? `${points.length} 個地點` : '尚無安排'}</span>
+            {warningCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-warn-soft px-[8px] py-[2px] text-[11px] font-bold text-[#b9762a]">
+                <Icon name="clock" size={11} /> {warningCount} 個提醒
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-[6px]">
+          {onOpenBookmarks && (
+            <button
+              type="button"
+              onClick={onOpenBookmarks}
+              title="書籤"
+              className="relative flex h-10 w-10 items-center justify-center rounded-[13px] border border-line bg-surface text-pink-deep shadow-1 active:scale-95"
+            >
+              <Icon name="heart" size={18} />
+              {bookmarkCount > 0 && (
+                <span className="num absolute -right-[5px] -top-[5px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-pink px-1 text-[10px] font-extrabold text-white">
+                  {bookmarkCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleRoute}
@@ -122,6 +153,8 @@ export default function DaySidebar({
                           item={it}
                           n={numberOf.get(it.id) ?? 0}
                           selected={selectedItemId === it.id}
+                          eff={schedule?.get(it.id)}
+                          hasWarning={(warningsByItem?.get(it.id)?.length ?? 0) > 0}
                           onSelect={() => onSelectItem(it)}
                         />
                       )}

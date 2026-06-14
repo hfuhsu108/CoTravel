@@ -15,6 +15,10 @@ export interface Trip {
   end_date: string | null
   cover_image_url: string | null
   invite_code: string | null
+  // 目的地座標（功能 3：地圖預設範圍的退路）。由建立/修改時的地點搜尋帶入；舊旅程為 null。
+  dest_lat: number | null
+  dest_lng: number | null
+  dest_place_id: string | null
   created_by: string | null
   created_at: string
 }
@@ -66,7 +70,14 @@ export interface Item {
   scheduled_time: string | null // 'HH:MM[:SS]' 造訪時間（定點常用）
   time_slot: string | null // 區域時段，如 '下午'
   radius_m: number | null // 區域圓形半徑（type=area 時）
-  category: string | null // 自由標記，如 '逛街'
+  is_bookmarked: boolean // 收藏旗標（功能 2：與 status/day_id 脫鉤；排入某天後仍可為 true）
+  tags: string[] // 清單（功能 2：Google 地圖式，一個地點可在多個清單），如 ['想去','美食']
+  timezone: string | null // 該地點 IANA 時區（功能 5：由座標自動推得；通知換算用）
+  alias: string | null // 自定義別名（顯示用；空則用 name）
+  stay_minutes: number | null // 停留分鐘（三時間：抵達=scheduled_time、離開=抵達+停留）
+  departure_time: string | null // 離開時間 'HH:MM[:SS]'（三時間；只存手動值，跨站串接於前端推算）
+  lodging_id: string | null // 非 null＝住宿項目（住宿刪除時連帶清）
+  lodging_auto: boolean // 住宿自動產生的頭/尾（手動複製本=false）
   order_index: number // 同一天內排序
   notes: string | null
   created_by: string | null
@@ -93,8 +104,20 @@ export interface ItemWithCandidates extends Item {
 // ---- 交通（階段 3；對應 docs/03 的 transports） ----
 
 // walk/transit/drive 走 Google Directions；custom 為自填（新幹線/包車/渡輪…）。
+// flight 為航班（功能 5）：起訖機場為自動建立的 point，航班資訊在文件→機票編輯。
 // bike 保留於 enum 但本階段 UI 未提供。
-export type TransportMode = 'walk' | 'transit' | 'drive' | 'bike' | 'custom'
+export type TransportMode = 'walk' | 'transit' | 'drive' | 'bike' | 'custom' | 'flight'
+
+// 路線步驟摘要（多路線選定後存於 transports.steps，顯示步行/公車轉乘與公車號）
+export interface TransitStep {
+  mode: 'walk' | 'transit' | 'drive' // 步行 / 搭乘 / 開車
+  line: string | null // 路線名/號，如 '87'、'御堂筋線'（transit 時）
+  vehicle: string | null // 交通工具中文，如 '公車'、'地鐵'、'火車'
+  from: string | null // 上車站名
+  to: string | null // 下車站名
+  num_stops: number | null // 經過站數
+  duration_min: number // 此步驟分鐘
+}
 
 export interface Transport {
   id: string
@@ -105,9 +128,36 @@ export interface Transport {
   duration_min: number | null
   distance_m: number | null
   custom_label: string | null // 自定義方式名稱，如 '新幹線'
+  flight_no: string | null // 航班編號（功能 5：mode='flight' 時，如 'BR198'）
   cost_text: string | null // 費用顯示字串，如 '¥240'
   route_polyline: string | null // Google encoded polyline（畫真實路線用）
+  // 航班/跨時區起訖（功能 5）：local 為當地牆鐘 'YYYY-MM-DDTHH:MM[:SS]'，tz 為 IANA 時區
+  depart_local: string | null
+  depart_tz: string | null
+  arrive_local: string | null
+  arrive_tz: string | null
+  depart_terminal: string | null // 出發航廈（航班）
+  arrive_terminal: string | null // 抵達航廈（航班）
+  steps: TransitStep[] | null // 路線步驟摘要（多路線選定後存）
   notes: string | null
+  created_at: string
+}
+
+// ---- 住宿（對應 docs/03 的 lodgings）：自動在對應日期頭尾建住宿 items（items.lodging_id） ----
+
+export interface Lodging {
+  id: string
+  trip_id: string
+  name: string // 飯店名
+  lat: number | null
+  lng: number | null
+  google_place_id: string | null
+  timezone: string | null
+  check_in: string // 'YYYY-MM-DD' 入住日
+  check_out: string // 'YYYY-MM-DD' 退房日
+  doc_id: string | null // 訂房單（documents.id；選填）
+  notes: string | null
+  created_by: string | null
   created_at: string
 }
 
@@ -116,14 +166,19 @@ export interface Transport {
 // 機票 / 住宿 / 文件（簽證保險證件） / 其他
 export type DocumentCategory = 'flight' | 'lodging' | 'document' | 'other'
 
+// file=上傳檔案；note=Markdown 備忘錄（功能 6，storage_path 為 null、內文在 content）
+export type DocumentKind = 'file' | 'note'
+
 // 連結（document_items / document_transports）為多對多：一個項目/交通可連多份文件，
 // 一份文件也可連多個項目/交通。前端只需文件本身，連結以 document_id+item_id/transport_id 操作。
 export interface Document {
   id: string
   trip_id: string
   category: DocumentCategory
-  file_name: string
-  storage_path: string // Storage 內路徑（一律透過 storage 抽象層存取）
+  kind: DocumentKind
+  file_name: string // 檔案原始檔名；備忘錄則為標題
+  storage_path: string | null // 檔案的 Storage 路徑（透過 storage 抽象層）；備忘錄為 null
+  content: string | null // 備忘錄的 Markdown 內文（kind='note' 時）
   uploaded_by: string | null
   created_at: string
 }

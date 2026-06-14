@@ -2,7 +2,13 @@
 // 沿用 api.ts 的慣例：薄包裝 Supabase、出錯即 throw（訊息交給 errMessage 顯示）。
 // RLS 已限定只有該趟成員可讀寫（見 supabase/schema.sql），故這裡不再自行過濾成員。
 import { supabase } from './supabase'
+import { tzForCoords } from './time'
 import type { AreaCandidate, Day, Item, ItemStatus, ItemType, Trip } from './types'
+
+// 顯示名稱（功能 1）：有別名用別名，否則用原名。搜尋/Google 詳情仍用原 name/google_place_id。
+export function displayName(item: Pick<Item, 'alias' | 'name'>): string {
+  return item.alias?.trim() || item.name
+}
 
 // ---- 日期工具（避免時區誤差：以本地年月日逐日遞增） ----
 function todayStr(): string {
@@ -11,7 +17,7 @@ function todayStr(): string {
 }
 
 // 回傳 start..end（含兩端）每一天的 'YYYY-MM-DD'；end < start 時退回只含 start。
-function eachDate(start: string, end: string): string[] {
+export function eachDate(start: string, end: string): string[] {
   const [sy, sm, sd] = start.split('-').map(Number)
   const [ey, em, ed] = end.split('-').map(Number)
   const cur = new Date(sy, sm - 1, sd)
@@ -98,15 +104,23 @@ export interface AddItemInput {
   lng?: number | null
   google_place_id?: string | null
   photo_url?: string | null
-  scheduled_time?: string | null
+  scheduled_time?: string | null // 抵達時間
+  departure_time?: string | null // 離開時間（功能 4；航班出發機場用：起飛時間）
+  stay_minutes?: number | null
   time_slot?: string | null
   radius_m?: number | null
-  category?: string | null
+  is_bookmarked?: boolean // 省略時：status='bookmark' 自動為 true，其餘 false
+  tags?: string[]
+  timezone?: string | null // 省略時：有座標則自動由 tz-lookup 推得
+  alias?: string | null // 自定義別名（功能 1）
+  lodging_id?: string | null // 住宿自動產生的項目掛在此 lodging（住宿管理）
+  lodging_auto?: boolean // 住宿自動產生的頭/尾＝true；手動複製本＝false
+  order_index?: number // 提供時直接用（住宿頭/尾定位）；否則自動接末位
   notes?: string | null
 }
 
 // 取某天現有 order_index 的下一個（接在末位）
-async function nextOrderIndex(dayId: string): Promise<number> {
+export async function nextOrderIndex(dayId: string): Promise<number> {
   const { data, error } = await supabase
     .from('items')
     .select('order_index')
@@ -118,6 +132,19 @@ async function nextOrderIndex(dayId: string): Promise<number> {
   return data ? (data as { order_index: number }).order_index + 1 : 0
 }
 
+// 取某天現有最小 order_index 的前一位（插在最前）；空天回 0。住宿「最頭」用。
+export async function headOrderIndex(dayId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('items')
+    .select('order_index')
+    .eq('day_id', dayId)
+    .order('order_index', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data ? (data as { order_index: number }).order_index - 1 : 0
+}
+
 export async function addItem(input: AddItemInput): Promise<Item> {
   // created_by 設為目前使用者（詳情頁「誰加的」頭像用）；getSession 讀本地快取、不打網路
   const {
@@ -126,7 +153,8 @@ export async function addItem(input: AddItemInput): Promise<Item> {
   const created_by = session?.user.id ?? null
 
   const order_index =
-    input.status === 'scheduled' && input.day_id ? await nextOrderIndex(input.day_id) : 0
+    input.order_index ??
+    (input.status === 'scheduled' && input.day_id ? await nextOrderIndex(input.day_id) : 0)
 
   const { data, error } = await supabase
     .from('items')
@@ -141,9 +169,18 @@ export async function addItem(input: AddItemInput): Promise<Item> {
       google_place_id: input.google_place_id ?? null,
       photo_url: input.photo_url ?? null,
       scheduled_time: input.scheduled_time ?? null,
+      departure_time: input.departure_time ?? null,
+      stay_minutes: input.stay_minutes ?? null,
       time_slot: input.time_slot ?? null,
       radius_m: input.radius_m ?? null,
-      category: input.category ?? null,
+      // 加書籤（status='bookmark'）預設視為已收藏，除非呼叫端明確指定
+      is_bookmarked: input.is_bookmarked ?? input.status === 'bookmark',
+      tags: input.tags ?? [],
+      // 有座標就自動推時區（功能 5）；通知/換算用
+      timezone: input.timezone ?? tzForCoords(input.lat, input.lng),
+      alias: input.alias ?? null,
+      lodging_id: input.lodging_id ?? null,
+      lodging_auto: input.lodging_auto ?? false,
       notes: input.notes ?? null,
       order_index,
       created_by,
@@ -154,11 +191,21 @@ export async function addItem(input: AddItemInput): Promise<Item> {
   return data as Item
 }
 
-// 部分更新（notes / scheduled_time / time_slot / radius_m / name / category…）
+// 部分更新（notes / scheduled_time / time_slot / radius_m / name / tags / is_bookmarked…）
 export type ItemPatch = Partial<
   Pick<
     Item,
-    'name' | 'notes' | 'scheduled_time' | 'time_slot' | 'radius_m' | 'category' | 'photo_url'
+    | 'name'
+    | 'alias'
+    | 'notes'
+    | 'scheduled_time'
+    | 'departure_time'
+    | 'stay_minutes'
+    | 'time_slot'
+    | 'radius_m'
+    | 'tags'
+    | 'is_bookmarked'
+    | 'photo_url'
   >
 >
 
@@ -168,7 +215,8 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
   return data as Item
 }
 
-// 移到某天（書籤→定點也走這支：設 status=scheduled、day_id、接末位 order_index）
+// 移到某天（書籤→排入某天也走這支：設 status=scheduled、day_id、接末位 order_index）。
+// 功能 2：不動 is_bookmarked，故從書籤排入某天後，該地點仍留在書籤列表。
 export async function moveItemToDay(itemId: string, dayId: string): Promise<Item> {
   const order_index = await nextOrderIndex(dayId)
   const { data, error } = await supabase
@@ -200,6 +248,62 @@ export async function removeItem(id: string): Promise<void> {
   // area_candidates 對 items 有 on delete cascade，候選會一併刪除
   const { error } = await supabase.from('items').delete().eq('id', id)
   if (error) throw error
+}
+
+// 複製景點（功能 3）：插在原項目之後。保留來源特性（含 lodging_id → 飯店複本仍帶床標記），
+// 但 lodging_auto=false，住宿編輯重產生時不會刪到這筆手動複本。不複製時間/備註（複本為新的造訪）。
+export async function duplicateItem(source: Item): Promise<Item> {
+  // 同天且排在來源之後者往後挪一位，騰出緊接在後的位置（書籤無 day_id 則免挪）
+  if (source.day_id) {
+    const { data: later, error: selErr } = await supabase
+      .from('items')
+      .select('id, order_index')
+      .eq('day_id', source.day_id)
+      .gt('order_index', source.order_index)
+    if (selErr) throw selErr
+    await Promise.all(
+      (later ?? []).map((r) => {
+        const row = r as { id: string; order_index: number }
+        return supabase
+          .from('items')
+          .update({ order_index: row.order_index + 1 })
+          .eq('id', row.id)
+          .then(({ error }) => {
+            if (error) throw error
+          })
+      }),
+    )
+  }
+  return await addItem({
+    trip_id: source.trip_id,
+    type: source.type,
+    status: source.status,
+    day_id: source.day_id,
+    name: source.name,
+    alias: source.alias,
+    lat: source.lat,
+    lng: source.lng,
+    google_place_id: source.google_place_id,
+    photo_url: source.photo_url,
+    time_slot: source.time_slot,
+    radius_m: source.radius_m,
+    is_bookmarked: source.is_bookmarked,
+    tags: source.tags,
+    timezone: source.timezone,
+    lodging_id: source.lodging_id,
+    lodging_auto: false,
+    order_index: source.order_index + 1,
+  })
+}
+
+// 從書籤列表移除（功能 2）：已排入某天 → 只清收藏旗標（保留行程安排）；
+// 純書籤（未排入）→ 整筆刪除。回傳更新後的 item，或 null（已刪除）。
+export async function removeFromBookmarks(item: Item): Promise<Item | null> {
+  if (item.day_id != null) {
+    return await updateItem(item.id, { is_bookmarked: false })
+  }
+  await removeItem(item.id)
+  return null
 }
 
 // ---- area_candidates ----

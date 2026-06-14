@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Day, Item } from '../../lib/types'
+import { displayName } from '../../lib/itinerary'
 import Icon from '../Icon'
 
 interface MarkerPopupProps {
@@ -31,13 +32,13 @@ export default function MarkerPopup({
       <div className="overflow-hidden rounded-lg bg-surface shadow-3">
         <div className="flex">
           {item.photo_url ? (
-            <img src={item.photo_url} alt={item.name} className="h-[88px] w-24 flex-none object-cover" />
+            <img src={item.photo_url} alt={displayName(item)} className="h-[88px] w-24 flex-none object-cover" />
           ) : (
             <div className={`ph w-24 flex-none ${isBookmark ? 'ph-warm' : 'ph-cool'}`} />
           )}
           <div className="min-w-0 flex-1 p-[11px]">
             <div className="flex items-start justify-between gap-2">
-              <div className="truncate text-[15px] font-extrabold">{item.name}</div>
+              <div className="truncate text-[15px] font-extrabold">{displayName(item)}</div>
               <button
                 type="button"
                 onClick={onClose}

@@ -12,11 +12,12 @@ export interface PickedPlace {
   photo_url: string | null
 }
 
-export type PickKind = 'point' | 'bookmark' | 'candidate'
+export type PickKind = 'point' | 'bookmark' | 'candidate' | 'pick'
 
 interface PlaceSearchProps {
   title: string
-  mode: 'add' | 'candidate' // add=加為定點/加入書籤；candidate=加為候選
+  // add=加為定點/加入書籤；candidate=加為候選；pick=單純選定一個地點（旅程目的地用）
+  mode: 'add' | 'candidate' | 'pick'
   onClose: () => void
   onPick: (place: PickedPlace, kind: PickKind) => Promise<void> | void
   bias?: google.maps.LatLngLiteral // 以地圖中心為偏好（提升在地相關性）
@@ -181,6 +182,15 @@ export default function PlaceSearch({ title, mode, onClose, onPick, bias }: Plac
                       <Icon name="heart" size={14} /> 加入書籤
                     </button>
                   </>
+                ) : mode === 'pick' ? (
+                  <button
+                    type="button"
+                    disabled={busyId !== null}
+                    onClick={() => handlePick(pred, 'pick')}
+                    className="flex items-center gap-1 rounded-[12px] bg-primary px-3 py-[7px] text-[13px] font-bold text-white active:scale-95 disabled:opacity-60"
+                  >
+                    <Icon name="check" size={14} /> 選擇此地點
+                  </button>
                 ) : (
                   <button
                     type="button"

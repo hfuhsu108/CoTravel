@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
-import type { Document, Item, Transport, TransportMode } from '../../../lib/types'
-import { fetchDirections, type DirectionsMode } from '../../../lib/directions'
+import type { Document, Item, TransitStep, Transport, TransportMode } from '../../../lib/types'
+import { fetchDirectionsRoutes, type DirectionsMode, type RouteOption } from '../../../lib/directions'
 import { listDocumentsByTransport } from '../../../lib/documents'
 import { errMessage } from '../../../lib/errMessage'
 import Icon from '../../Icon'
@@ -11,6 +11,7 @@ import Button from '../../ui/Button'
 import LinkedDocs from '../../docs/LinkedDocs'
 import DocLinkSheet from '../../docs/DocLinkSheet'
 import MiniRouteMap from '../MiniRouteMap'
+import RoutePreviewMap from '../RoutePreviewMap'
 import { DetailHead } from './parts'
 
 // TransitDetail 儲存時往上拋的內容（trip_id/from/to 由 MapTab 補齊）
@@ -21,6 +22,7 @@ export interface TransitSavePayload {
   custom_label?: string | null
   cost_text?: string | null
   route_polyline?: string | null
+  steps?: TransitStep[] | null
   notes?: string | null
 }
 
@@ -70,6 +72,15 @@ export default function TransitDetail({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 功能 2：多路線候選（挑選前）與已選路線的步驟（步行/公車轉乘）
+  const [routeOptions, setRouteOptions] = useState<RouteOption[]>([])
+  const [previewIdx, setPreviewIdx] = useState(0) // 預覽中的路線（挑選前）
+  const [chosenSteps, setChosenSteps] = useState<TransitStep[] | null>(
+    transport && transport.mode !== 'custom' ? (transport.steps ?? null) : null,
+  )
+  const [chosenPath, setChosenPath] = useState<string | null>(
+    transport && transport.mode !== 'custom' ? (transport.route_polyline ?? null) : null,
+  )
 
   // 自定義表單（mode=custom 時用；既有為 custom 則帶入）
   const isCustomTransport = transport?.mode === 'custom'
@@ -122,13 +133,13 @@ export default function TransitDetail({
   const toCoord =
     toItem.lat != null && toItem.lng != null ? { lat: toItem.lat, lng: toItem.lng } : null
 
-  // 選 Directions 模式：立即算路線 → 顯示數據 → 成功即 upsert（含 polyline 快取）
-  async function selectDirectionsMode(m: DirectionsMode) {
+  // 選 Directions 模式：列出多條替代路線（功能 2），不自動存，待使用者挑選
+  async function fetchRoutes(m: DirectionsMode) {
     setMode(m)
     setError(null)
+    setRouteOptions([])
     if (!fromCoord || !toCoord) {
       setError('起點或終點缺少座標，無法計算路線')
-      setStats(null)
       return
     }
     if (!routesLib || !geometryLib) {
@@ -136,21 +147,17 @@ export default function TransitDetail({
       return
     }
     setLoading(true)
-    setStats(null)
     try {
-      const data = await fetchDirections(routesLib, geometryLib, fromCoord, toCoord, m)
-      if (!data) {
+      // 有 place_id 用 placeId（Google 對到正式出入口，修正大型場所形心被導到錯站）
+      const origin = fromItem.google_place_id ? { placeId: fromItem.google_place_id } : fromCoord
+      const destination = toItem.google_place_id ? { placeId: toItem.google_place_id } : toCoord
+      const opts = await fetchDirectionsRoutes(routesLib, geometryLib, origin, destination, m)
+      if (opts.length === 0) {
         setError('找不到這段路線')
         return
       }
-      setStats({ duration_min: data.duration_min, distance_m: data.distance_m, cost_text: data.cost_text })
-      await onSave({
-        mode: m,
-        duration_min: data.duration_min,
-        distance_m: data.distance_m,
-        cost_text: data.cost_text,
-        route_polyline: data.encodedPath,
-      })
+      setRouteOptions(opts)
+      setPreviewIdx(0)
     } catch (e) {
       setError(errMessage(e))
     } finally {
@@ -158,12 +165,37 @@ export default function TransitDetail({
     }
   }
 
+  // 挑一條路線：存起來（含步驟）並收起候選清單
+  async function pickRoute(opt: RouteOption) {
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave({
+        mode,
+        duration_min: opt.duration_min,
+        distance_m: opt.distance_m,
+        cost_text: opt.cost_text,
+        route_polyline: opt.encodedPath,
+        steps: opt.steps,
+      })
+      setStats({ duration_min: opt.duration_min, distance_m: opt.distance_m, cost_text: opt.cost_text })
+      setChosenSteps(opt.steps)
+      setChosenPath(opt.encodedPath)
+      setRouteOptions([])
+    } catch (e) {
+      setError(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function selectMode(m: DirectionsMode | 'custom') {
     if (m === 'custom') {
       setMode('custom')
       setError(null)
+      setRouteOptions([])
     } else {
-      void selectDirectionsMode(m)
+      void fetchRoutes(m)
     }
   }
 
@@ -172,10 +204,11 @@ export default function TransitDetail({
     setError(null)
     try {
       const minutes = durationText.trim() ? Number.parseInt(durationText, 10) : null
+      const manualMin = Number.isFinite(minutes) ? minutes : null
       await onSave({
         mode: 'custom',
         custom_label: customLabel.trim() || null,
-        duration_min: Number.isFinite(minutes) ? minutes : null,
+        duration_min: manualMin,
         cost_text: costText.trim() || null,
         notes: notes.trim() || null,
         // 自定義無 Directions 路線 → 清掉舊 polyline（地圖改畫虛線直線）
@@ -215,11 +248,77 @@ export default function TransitDetail({
 
   const km = stats ? (stats.distance_m / 1000).toFixed(1) : null
 
+  // 航班段（功能 5）：唯讀，導向文件→機票編輯（避免與機票分頁兩處編輯衝突）
+  if (transport?.mode === 'flight') {
+    return (
+      <div className="absolute inset-0 z-[72] flex flex-col bg-bg animate-slideleft">
+        <div className="relative h-[200px] flex-none">
+          <MiniRouteMap />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="返回"
+            className="absolute left-[14px] flex h-10 w-10 items-center justify-center rounded-[13px] bg-white/90 text-ink-2 shadow-1 active:scale-95"
+            style={{ top: 'calc(env(safe-area-inset-top) + 14px)' }}
+          >
+            <Icon name="back" size={20} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 pb-8 pt-[18px]">
+          <DetailHead
+            title={
+              <span className="flex items-center gap-[9px] text-[21px]">
+                <span className="min-w-0 truncate">{fromItem.name}</span>
+                <span className="flex flex-none text-ink-4">
+                  <Icon name="chevR" size={20} />
+                </span>
+                <span className="min-w-0 truncate">{toItem.name}</span>
+              </span>
+            }
+            badge={
+              <span className="inline-flex items-center gap-[6px] rounded-full bg-primary-soft px-[11px] py-[5px] text-[12.5px] font-bold text-primary-deep">
+                <Icon name="plane" size={13} /> 航班{transport.flight_no ? ` ${transport.flight_no}` : ''}
+              </span>
+            }
+          />
+          <div className="mb-4 rounded-lg bg-surface-2 p-4 text-[13.5px] leading-[1.6] text-ink-3">
+            這是航班段。航班時間、時差、飛行時數與機票，請到「文件 → 機票」分頁的航班卡查看或編輯。
+          </div>
+          <LinkedDocs docs={linkedDocs} onManage={() => setManageOpen(true)} />
+          {transport && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleRemove}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-md py-[14px] text-base font-bold text-danger active:scale-[0.98] disabled:opacity-50"
+              style={{ background: 'var(--pink-soft)' }}
+            >
+              <Icon name="trash" size={16} /> 移除這段航班
+            </button>
+          )}
+        </div>
+        {manageOpen && transport && (
+          <DocLinkSheet
+            tripId={tripId}
+            targetKind="transport"
+            targetId={transport.id}
+            onChanged={refreshLinked}
+            onClose={() => setManageOpen(false)}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="absolute inset-0 z-[72] flex flex-col bg-bg animate-slideleft">
-      {/* hero：裝飾路線縮圖 + 返回 */}
+      {/* hero：真實路線預覽地圖 + 返回（功能 4） */}
       <div className="relative h-[200px] flex-none">
-        <MiniRouteMap />
+        <RoutePreviewMap
+          path={routeOptions.length > 0 ? (routeOptions[previewIdx]?.encodedPath ?? null) : chosenPath}
+          from={fromCoord}
+          to={toCoord}
+        />
         <button
           type="button"
           onClick={onClose}
@@ -317,27 +416,54 @@ export default function TransitDetail({
               <Icon name="check" size={17} /> 儲存
             </Button>
           </div>
-        ) : (
-          <>
-            {/* Directions 數據三欄 */}
-            <div className="mb-4 overflow-hidden rounded-lg bg-surface-2 shadow-1">
-              {loading ? (
-                <div className="py-[26px] text-center text-[13px] text-ink-3">計算路線中…</div>
-              ) : stats ? (
-                <div className="flex items-stretch justify-around px-2 py-[18px]">
-                  <Stat value={String(stats.duration_min)} label="分鐘" />
-                  <Divider />
-                  <Stat value={km ?? '—'} label="公里" />
-                  <Divider />
-                  <Stat value={stats.cost_text ?? '—'} label="車資" />
-                </div>
-              ) : (
-                <div className="py-[26px] text-center text-[13px] text-ink-3">
-                  尚未計算路線，點上方模式即可匯入
-                </div>
-              )}
+        ) : loading ? (
+          <div className="mb-4 rounded-lg bg-surface-2 py-[26px] text-center text-[13px] text-ink-3 shadow-1">
+            計算路線中…
+          </div>
+        ) : routeOptions.length > 0 ? (
+          // 多路線候選（功能 2）：挑一條
+          <div className="mb-4 flex flex-col gap-2">
+            <div className="text-[12.5px] font-bold text-ink-3">
+              點卡片在上方地圖預覽，再按「選這條路線」（共 {routeOptions.length} 條）
             </div>
-          </>
+            {routeOptions.map((opt, i) => (
+              <RouteOptionCard
+                key={i}
+                opt={opt}
+                selected={i === previewIdx}
+                busy={busy}
+                onPreview={() => setPreviewIdx(i)}
+                onPick={() => void pickRoute(opt)}
+              />
+            ))}
+          </div>
+        ) : stats ? (
+          // 已選路線：數據三欄 + 步驟（步行/公車轉乘）
+          <div className="mb-4">
+            <div className="overflow-hidden rounded-lg bg-surface-2 shadow-1">
+              <div className="flex items-stretch justify-around px-2 py-[18px]">
+                <Stat value={String(stats.duration_min)} label="分鐘" />
+                <Divider />
+                <Stat value={km ?? '—'} label="公里" />
+                <Divider />
+                <Stat value={stats.cost_text ?? '—'} label="車資" />
+              </div>
+            </div>
+            {chosenSteps && chosenSteps.length > 0 && <StepList steps={chosenSteps} />}
+            {fromCoord && toCoord && (
+              <button
+                type="button"
+                onClick={() => void fetchRoutes(mode as DirectionsMode)}
+                className="mt-2 w-full rounded-md border border-line py-[10px] text-[13px] font-bold text-ink-2 active:scale-[0.99]"
+              >
+                顯示其他路線
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="mb-4 rounded-lg bg-surface-2 py-[26px] text-center text-[13px] text-ink-3 shadow-1">
+            尚未計算路線，點上方模式即可列出路線
+          </div>
         )}
 
         {/* 連結文件（所有交通段皆可；新建未存的段先停用並提示） */}
@@ -392,4 +518,85 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function Divider() {
   return <div className="w-px self-stretch bg-line" />
+}
+
+// 單一步驟文字：步行→「步行 N 分」；開車→「開車 N 分」；搭乘→「公車 87」等
+function stepLabel(s: TransitStep): string {
+  if (s.mode === 'walk') return `步行 ${s.duration_min} 分`
+  if (s.mode === 'drive') return `開車 ${s.duration_min} 分`
+  const v = s.vehicle ?? '搭乘'
+  const line = s.line ? ` ${s.line}` : ''
+  const stops = s.num_stops != null ? `（${s.num_stops} 站）` : ''
+  return `${v}${line}${stops}`
+}
+
+function RouteOptionCard({
+  opt,
+  selected,
+  busy,
+  onPreview,
+  onPick,
+}: {
+  opt: RouteOption
+  selected: boolean
+  busy: boolean
+  onPreview: () => void
+  onPick: () => void
+}) {
+  const km = (opt.distance_m / 1000).toFixed(1)
+  return (
+    <div
+      className={`rounded-lg border bg-surface p-3 shadow-1 ${selected ? 'border-primary' : 'border-line'}`}
+    >
+      <button type="button" onClick={onPreview} className="w-full text-left">
+        <div className="flex items-center justify-between">
+          <span className="num text-[17px] font-extrabold text-primary-deep">
+            {opt.duration_min} 分
+          </span>
+          <span className="num text-[12.5px] font-bold text-ink-3">
+            {km} 公里
+            {opt.cost_text ? ` · ${opt.cost_text}` : ''}
+            {opt.transfers > 0 ? ` · 轉乘 ${opt.transfers} 次` : ''}
+          </span>
+        </div>
+        <div className="mt-[6px] truncate text-[12.5px] text-ink-2">
+          {opt.steps.map(stepLabel).join(' → ')}
+        </div>
+      </button>
+      {selected && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onPick}
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md bg-primary py-[9px] text-[13px] font-bold text-white active:scale-95 disabled:opacity-60"
+        >
+          <Icon name="check" size={15} /> 選這條路線
+        </button>
+      )}
+    </div>
+  )
+}
+
+function StepList({ steps }: { steps: TransitStep[] }) {
+  return (
+    <div className="mt-3 flex flex-col gap-[10px] rounded-lg bg-surface-2 p-3 shadow-1">
+      {steps.map((s, i) => (
+        <div key={i} className="flex items-start gap-2 text-[13px]">
+          <Icon
+            name={s.mode === 'walk' ? 'walk' : 'train'}
+            size={16}
+            className="mt-[1px] flex-none text-primary-deep"
+          />
+          <div className="min-w-0">
+            <div className="font-bold text-ink-2">{stepLabel(s)}</div>
+            {s.mode === 'transit' && s.from && s.to && (
+              <div className="text-[12px] text-ink-3">
+                {s.from} → {s.to}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }

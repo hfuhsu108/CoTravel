@@ -6,6 +6,7 @@ import TripMain from './routes/TripMain'
 import MapTab from './routes/tabs/MapTab'
 import DocsTab from './routes/tabs/DocsTab'
 import PackingTab from './routes/tabs/PackingTab'
+import SettingsTab from './routes/tabs/SettingsTab'
 
 // App 外殼：以 AuthProvider 包裹全站，內容置中於手機寬度欄（桌面寬版兩側留白、手機滿版）。
 function AppRoot() {
@@ -38,6 +39,7 @@ export const router = createHashRouter([
               { path: 'map', element: <MapTab /> },
               { path: 'docs', element: <DocsTab /> },
               { path: 'packing', element: <PackingTab /> },
+              { path: 'settings', element: <SettingsTab /> },
             ],
           },
         ],

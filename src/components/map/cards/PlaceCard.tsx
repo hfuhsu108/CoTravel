@@ -1,17 +1,29 @@
 import type { Item } from '../../../lib/types'
+import { displayName } from '../../../lib/itinerary'
+import { formatMin, type EffTime } from '../../../lib/schedule'
 import Icon from '../../Icon'
 
 interface PlaceCardProps {
   item: Item
   n: number // 站序（當天定點編號）
   selected: boolean
+  eff?: EffTime // 有效時間（抵達/離開；推算值以淡色顯示）
+  hasWarning?: boolean // 有時間防呆提醒
   onSelect: () => void
 }
 
-// 定點卡（畫面 2 PlaceCard）：縮圖＋編號徽章、名稱、造訪時間 chip、分類 chip。
-// 對照 design_handoff/screens-main.jsx 的 PlaceCard 重建（rating 無對應資料欄，先不顯示）。
-export default function PlaceCard({ item, n, selected, onSelect }: PlaceCardProps) {
-  const time = item.scheduled_time?.slice(0, 5)
+// 定點卡（畫面 2 PlaceCard）：縮圖＋編號徽章、名稱、造訪時間 chip、清單 chip。
+// 時間顯示有效「抵達–離開」（功能 4）；推算值（非手填）以淡色區隔。
+export default function PlaceCard({ item, n, selected, eff, hasWarning, onSelect }: PlaceCardProps) {
+  const timeLabel =
+    eff?.arrival != null
+      ? `${formatMin(eff.arrival)}${eff.departure != null ? `–${formatMin(eff.departure)}` : ''}`
+      : eff?.departure != null
+        ? `離 ${formatMin(eff.departure)}`
+        : (item.scheduled_time?.slice(0, 5) ?? null)
+  const timeDerived =
+    !!eff &&
+    (eff.arrival != null ? !eff.arrivalManual : eff.departure != null ? !eff.departureManual : false)
   return (
     <div
       onClick={onSelect}
@@ -22,7 +34,7 @@ export default function PlaceCard({ item, n, selected, onSelect }: PlaceCardProp
         {item.photo_url ? (
           <img
             src={item.photo_url}
-            alt={item.name}
+            alt={displayName(item)}
             className="h-[58px] w-[58px] rounded-[14px] object-cover"
           />
         ) : (
@@ -35,19 +47,37 @@ export default function PlaceCard({ item, n, selected, onSelect }: PlaceCardProp
         </span>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15.5px] font-extrabold">{item.name}</div>
-        <div className="mt-[3px] flex items-center gap-2">
-          {time && (
-            <span className="num flex items-center gap-1 rounded-full bg-primary-soft px-2 py-[2px] text-xs font-bold text-primary-deep">
+        <div className="truncate text-[15.5px] font-extrabold">{displayName(item)}</div>
+        <div className="mt-[3px] flex flex-wrap items-center gap-2">
+          {item.lodging_id && (
+            <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-[2px] text-[11px] font-bold text-primary-deep">
+              <Icon name="bed" size={12} /> 住宿
+            </span>
+          )}
+          {timeLabel && (
+            <span
+              className={`num flex items-center gap-1 rounded-full px-2 py-[2px] text-xs font-bold ${
+                timeDerived ? 'bg-line text-ink-3' : 'bg-primary-soft text-primary-deep'
+              }`}
+              title={timeDerived ? '系統推算時間' : undefined}
+            >
               <Icon name="clock" size={12} />
-              {time}
+              {timeLabel}
             </span>
           )}
-          {item.category && (
-            <span className="rounded-full bg-line px-2 py-[2px] text-[11px] font-bold text-ink-2">
-              {item.category}
+          {hasWarning && (
+            <span className="rounded-full bg-warn-soft px-[8px] py-[2px] text-[11px] font-bold text-[#b9762a]">
+              提醒
             </span>
           )}
+          {item.tags.map((t) => (
+            <span
+              key={t}
+              className="rounded-full bg-line px-2 py-[2px] text-[11px] font-bold text-ink-2"
+            >
+              {t}
+            </span>
+          ))}
         </div>
       </div>
     </div>

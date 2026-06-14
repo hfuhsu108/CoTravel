@@ -11,6 +11,7 @@ const tabs: { to: string; label: string; icon: IconName }[] = [
   { to: 'map', label: '地圖', icon: 'map' },
   { to: 'docs', label: '文件', icon: 'doc' },
   { to: 'packing', label: '行李', icon: 'bag' },
+  { to: 'settings', label: '設定', icon: 'gear' },
 ]
 
 export default function TripMain() {

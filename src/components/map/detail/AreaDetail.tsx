@@ -5,6 +5,7 @@ import Icon from '../../Icon'
 import LinkedDocs from '../../docs/LinkedDocs'
 import { DetailHead, Eyebrow } from './parts'
 import MoveRemoveActions from './MoveRemoveActions'
+import TagEditor from './TagEditor'
 
 interface AreaDetailProps {
   item: Item
@@ -109,6 +110,13 @@ export default function AreaDetail({
       >
         <Icon name="plus" size={17} /> 新增候選店家
       </button>
+
+      <div className="my-4">
+        <Eyebrow>清單</Eyebrow>
+        <div className="mt-2">
+          <TagEditor tags={item.tags} onChange={(tags) => void onUpdate({ tags })} />
+        </div>
+      </div>
 
       <div className="my-4">
         <Eyebrow>備註</Eyebrow>

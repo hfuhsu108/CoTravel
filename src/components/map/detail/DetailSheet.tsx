@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { AreaCandidate, Day, Document, Item, TripMemberWithProfile } from '../../../lib/types'
-import type { ItemPatch } from '../../../lib/itinerary'
+import { displayName, type ItemPatch } from '../../../lib/itinerary'
+import type { EffTime } from '../../../lib/schedule'
 import { listDocumentsByItem } from '../../../lib/documents'
 import Icon from '../../Icon'
 import Avatar from '../../Avatar'
@@ -16,9 +17,13 @@ interface DetailSheetProps {
   members: TripMemberWithProfile[]
   meId: string
   stationLabel: string | null
+  tripTz: string | null // 旅程主時區（功能 5：與地點時區不同時，造訪時間附時區標籤）
+  effTime: EffTime | null // 有效三時間（功能 4；可能為 null，如書籤或非當天）
+  warnings: string[] // 此項目的時間防呆警告（功能 8）
   onClose: () => void
   onUpdate: (patch: ItemPatch) => Promise<void>
   onRemove: () => Promise<void>
+  onDuplicate: () => Promise<void>
   onMoveDay: (dayId: string) => Promise<void>
   onToggleCandidate: (c: AreaCandidate) => Promise<void>
   onRemoveCandidate: (id: string) => Promise<void>
@@ -34,9 +39,13 @@ export default function DetailSheet({
   members,
   meId,
   stationLabel,
+  tripTz,
+  effTime,
+  warnings,
   onClose,
   onUpdate,
   onRemove,
+  onDuplicate,
   onMoveDay,
   onToggleCandidate,
   onRemoveCandidate,
@@ -78,7 +87,7 @@ export default function DetailSheet({
     <div className="absolute inset-0 z-[72] flex flex-col bg-bg animate-slideleft">
       <div className="relative flex-none">
         {item.photo_url && !isArea ? (
-          <img src={item.photo_url} alt={item.name} className="h-[210px] w-full object-cover" />
+          <img src={item.photo_url} alt={displayName(item)} className="h-[210px] w-full object-cover" />
         ) : (
           <div className={`ph flex h-[210px] items-center justify-center ${isArea ? 'ph-warm' : ''}`}>
             {isArea ? (
@@ -87,7 +96,7 @@ export default function DetailSheet({
                 style={{ border: '2.5px dashed var(--primary)', background: 'rgba(122,108,240,.12)' }}
               />
             ) : (
-              <span className="ph-label">{item.name}</span>
+              <span className="ph-label">{displayName(item)}</span>
             )}
           </div>
         )}
@@ -138,10 +147,14 @@ export default function DetailSheet({
             item={item}
             stationLabel={stationLabel}
             days={days}
+            tripTz={tripTz}
+            effTime={effTime}
+            warnings={warnings}
             linkedDocs={linkedDocs}
             onManageDocs={() => setManageOpen(true)}
             onUpdate={onUpdate}
             onRemove={onRemove}
+            onDuplicate={onDuplicate}
             onMoveDay={onMoveDay}
           />
         )}

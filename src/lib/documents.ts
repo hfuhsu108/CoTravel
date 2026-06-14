@@ -154,10 +154,59 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Docume
   }
 }
 
+// ---- 備忘錄（功能 6）：kind='note'、無 storage_path，內文存 content ----
+
+export interface CreateNoteInput {
+  trip_id: string
+  category: DocumentCategory
+  title: string
+  content: string
+}
+
+export async function createNote(input: CreateNoteInput): Promise<Document> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uploaded_by = session?.user.id ?? null
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      trip_id: input.trip_id,
+      category: input.category,
+      kind: 'note',
+      file_name: input.title,
+      storage_path: null,
+      content: input.content,
+      uploaded_by,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Document
+}
+
+export async function updateNote(
+  id: string,
+  patch: { title?: string; content?: string },
+): Promise<Document> {
+  const update: Record<string, string> = {}
+  if (patch.title !== undefined) update.file_name = patch.title
+  if (patch.content !== undefined) update.content = patch.content
+  const { data, error } = await supabase
+    .from('documents')
+    .update(update)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Document
+}
+
 // 刪除文件：先刪 DB 列（避免留下指向已消失檔案的破列），再 best-effort 清 storage。
-// 離線快取由呼叫端在成功後一併移除（見 documentView / docCache）。
+// 備忘錄無 storage_path，跳過 storage 刪除。離線快取由呼叫端在成功後一併移除（見 documentView / docCache）。
 export async function removeDocument(doc: Pick<Document, 'id' | 'storage_path'>): Promise<void> {
   const { error } = await supabase.from('documents').delete().eq('id', doc.id)
   if (error) throw error
-  await storage.remove(doc.storage_path).catch(() => {})
+  if (doc.storage_path) await storage.remove(doc.storage_path).catch(() => {})
 }

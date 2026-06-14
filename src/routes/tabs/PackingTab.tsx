@@ -15,11 +15,6 @@ import Icon from '../../components/Icon'
 import Avatar from '../../components/Avatar'
 import AddPackSheet from '../../components/packing/AddPackSheet'
 
-// 不在固定分類清單內的 category（含 null）一律歸到「其他」組顯示
-function normalizeCategory(category: string | null): string {
-  return category && (PACK_CATEGORIES as readonly string[]).includes(category) ? category : '其他'
-}
-
 // 畫面 5 行李清單：依個人分的清單 + 勾選 + 完成度。兩人互看，對方唯讀（UI 擋 + RLS 擋）。
 // 行李變動不寫 activity_log（勾選高頻會洗版），靠 Realtime tick 即時同步對方進度。
 export default function PackingTab() {
@@ -75,18 +70,32 @@ export default function PackingTab() {
     () => list.filter((p) => p.owner_user_id === viewedUserId),
     [list, viewedUserId],
   )
+  // 動態分組（功能 6：分類可自定義）：預設分類依固定順序在前、自訂分類其後（依字母）、「其他」殿後
   const groups = useMemo(() => {
     const byCat = new Map<string, PackingItem[]>()
     for (const p of viewed) {
-      const cat = normalizeCategory(p.category)
+      const cat = p.category?.trim() || '其他'
       const arr = byCat.get(cat) ?? []
       arr.push(p)
       byCat.set(cat, arr)
     }
-    return PACK_CATEGORIES.map((cat) => ({ cat, items: byCat.get(cat) ?? [] })).filter(
-      (g) => g.items.length > 0,
-    )
+    const defaultsPresent = PACK_CATEGORIES.filter((c) => c !== '其他' && byCat.has(c))
+    const customs = [...byCat.keys()]
+      .filter((c) => c !== '其他' && !(PACK_CATEGORIES as readonly string[]).includes(c))
+      .sort((a, b) => a.localeCompare(b))
+    const ordered = [...defaultsPresent, ...customs]
+    if (byCat.has('其他')) ordered.push('其他')
+    return ordered.map((cat) => ({ cat, items: byCat.get(cat) ?? [] }))
   }, [viewed])
+
+  // 新增時的分類建議：預設分類 ∪ 本人已用過的分類
+  const categorySuggestions = useMemo(() => {
+    const s = new Set<string>(PACK_CATEGORIES)
+    for (const p of list) {
+      if (p.owner_user_id === meId && p.category?.trim()) s.add(p.category.trim())
+    }
+    return [...s]
+  }, [list, meId])
 
   const total = viewed.length
   const done = viewed.filter((p) => p.is_packed).length
@@ -314,7 +323,13 @@ export default function PackingTab() {
         </button>
       )}
 
-      {addOpen && <AddPackSheet onAdd={handleAdd} onClose={() => setAddOpen(false)} />}
+      {addOpen && (
+        <AddPackSheet
+          suggestions={categorySuggestions}
+          onAdd={handleAdd}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
     </div>
   )
 }
