@@ -1,15 +1,17 @@
 import type { Transport } from '../../lib/types'
+import { formatMin } from '../../lib/schedule'
 import Icon from '../Icon'
 import { modeIcon, transportLabel } from './transitMeta'
 
 interface TransitRowProps {
   transport: Transport | null // null = 尚未設定這段交通
+  latestDeparture?: number | null // 為趕上下一站手填抵達，前一站最晚出發時刻（功能 5）
   onClick: () => void
 }
 
 // 相鄰兩項目間的交通列（畫面 2，對照設計稿 TransitRow）。
 // 左側虛線豎條銜接上下卡；已設定顯示模式＋時間，未設定顯示淡色「加交通」。
-export default function TransitRow({ transport, onClick }: TransitRowProps) {
+export default function TransitRow({ transport, latestDeparture, onClick }: TransitRowProps) {
   const configured = transport !== null
   const time = transport?.duration_min != null ? `${transport.duration_min} 分` : null
 
@@ -36,6 +38,11 @@ export default function TransitRow({ transport, onClick }: TransitRowProps) {
           {time && <span className="num text-[13px] font-bold text-ink-2">· {time}</span>}
           {transport.cost_text && (
             <span className="num text-[12.5px] font-bold text-ink-3">· {transport.cost_text}</span>
+          )}
+          {latestDeparture != null && (
+            <span className="num text-[12px] font-bold text-[#b9762a]">
+              · 最晚 {formatMin(latestDeparture)} 出發
+            </span>
           )}
         </>
       ) : (

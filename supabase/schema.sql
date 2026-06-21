@@ -627,3 +627,109 @@ begin
     end if;
   end loop;
 end $$;
+
+-- ----------------------------------------------------------------
+-- 8. 景點清單 metadata（bookmark_lists）＋ 行李分類（packing_categories）
+--    清單仍以 items.tags[] 的「名稱」保留多清單歸屬與既有邏輯；本表以 (trip_id, name)
+--    為鍵掛 icon/顏色，供地圖 marker 用。行李分類「各自管理」（owner_user_id 區分），
+--    packing_items 由 category 文字改 FK category_id。全段冪等可重跑。
+-- ----------------------------------------------------------------
+
+-- 8a. 景點清單 metadata（名稱即 join 鍵；rename/刪除時連同 items.tags 一起改）
+create table if not exists bookmark_lists (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references trips(id) on delete cascade,
+  name text not null,                     -- 對應 items.tags 內的清單名
+  icon text not null default 'heart',     -- 取自前端 Icon 集的精選子集（預設愛心＝沿用原書籤外觀）
+  color text not null default '#f08fb0',  -- 預設粉（沿用原書籤愛心色）
+  sort_order int not null default 0,
+  created_at timestamptz default now(),
+  unique (trip_id, name)
+);
+alter table bookmark_lists enable row level security;
+drop policy if exists "members rw bookmark_lists" on bookmark_lists;
+create policy "members rw bookmark_lists" on bookmark_lists
+  for all using (is_trip_member(trip_id)) with check (is_trip_member(trip_id));
+
+-- 由既有 items.tags 種子化清單 metadata（出現過的清單名給預設 icon/色；已存在則略過）
+insert into bookmark_lists (trip_id, name)
+select distinct i.trip_id, tag
+from items i, unnest(i.tags) as tag
+where tag is not null and length(trim(tag)) > 0
+on conflict (trip_id, name) do nothing;
+
+-- 8b. 行李分類（各自管理）
+create table if not exists packing_categories (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references trips(id) on delete cascade,
+  owner_user_id uuid references auth.users(id) on delete cascade,
+  name text not null,
+  sort_order int not null default 0,
+  created_at timestamptz default now(),
+  unique (trip_id, owner_user_id, name)
+);
+alter table packing_categories enable row level security;
+-- 成員互看（看夥伴清單分組要讀得到其分類名）；只能改自己的
+drop policy if exists "members read packing_categories" on packing_categories;
+create policy "members read packing_categories" on packing_categories
+  for select using (is_trip_member(trip_id));
+drop policy if exists "owner write packing_categories" on packing_categories;
+create policy "owner write packing_categories" on packing_categories
+  for all using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid());
+
+-- packing_items：category 文字 → FK category_id（先加欄、回填、再清舊欄）
+alter table packing_items add column if not exists category_id uuid references packing_categories(id) on delete set null;
+
+-- 種子化每個 (trip, owner) 的預設分類（僅在該 owner 於該趟尚無任何分類時）
+insert into packing_categories (trip_id, owner_user_id, name, sort_order)
+select t.trip_id, t.owner_user_id, d.name, d.ord
+from (select distinct trip_id, owner_user_id from packing_items) t
+cross join (values ('證件',0),('電子產品',1),('盥洗',2),('衣物',3),('其他',4)) as d(name, ord)
+where not exists (
+  select 1 from packing_categories pc
+  where pc.trip_id = t.trip_id and pc.owner_user_id = t.owner_user_id
+)
+on conflict (trip_id, owner_user_id, name) do nothing;
+
+-- 既有 category 文字回填 category_id（含非預設的自訂分類），完成後移除舊欄
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='packing_items' and column_name='category'
+  ) then
+    insert into packing_categories (trip_id, owner_user_id, name)
+    select distinct pi.trip_id, pi.owner_user_id, trim(pi.category)
+    from packing_items pi
+    where pi.category is not null and length(trim(pi.category)) > 0
+    on conflict (trip_id, owner_user_id, name) do nothing;
+
+    update packing_items pi
+    set category_id = pc.id
+    from packing_categories pc
+    where pi.category_id is null
+      and pi.category is not null
+      and pc.trip_id = pi.trip_id
+      and pc.owner_user_id = pi.owner_user_id
+      and pc.name = trim(pi.category);
+
+    alter table packing_items drop column category;
+  end if;
+end $$;
+
+-- 8c. 兩張新表加進 Realtime publication（冪等）
+do $$
+declare t text;
+begin
+  foreach t in array array['bookmark_lists','packing_categories'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+
+-- 8d. 住宿照片：飯店搜尋時抓到的照片，同步到行程地標（機場/飯店地標不再沒縮圖）。冪等。
+alter table lodgings add column if not exists photo_url text;

@@ -2,26 +2,33 @@
 // 營業時間外另在 PlaceDetail 以即時抓的營業時間判斷（不在此，因 hours 未存 DB）。
 import type { Item, Transport } from './types'
 import { formatMin, type EffTime } from './schedule'
+import { tzOffsetMinutes } from './time'
 
 export function computeDayWarnings(
   ordered: Item[],
   transportByPair: Map<string, Transport>,
   schedule: Map<string, EffTime>,
   flightArrivalItemIds: Set<string>, // 當天「航班抵達機場」item（flight 交通的 to_item）
+  dayDate?: string | null, // 跨站時間比較的時差修正參考日（處理 DST；同 computeDaySchedule）
+  tripTz?: string | null, // 無座標項目的時差退路（同 computeDaySchedule）
 ): Map<string, string[]> {
   const warn = new Map<string, string[]>()
+  const atISO = dayDate ? `${dayDate}T12:00` : undefined
   const add = (id: string, msg: string) => {
     const arr = warn.get(id) ?? []
     arr.push(msg)
     warn.set(id, arr)
   }
 
-  // 當天航班最早落地時刻（供「排在落地前」判斷）
+  // 當天最後一個「航班抵達機場」的位置與其落地時刻。
+  // 只有排在它之後（目的地側）的項目才該被「落地前」判斷：起飛機場與所有 origin 側
+  // 項目本就在落地前、且與目的地分屬不同時區，牆鐘相比無意義，不該誤報（功能 1 修正）。
+  let lastArrivalIdx = -1
   let landing: number | null = null
-  for (const it of ordered) {
-    if (!flightArrivalItemIds.has(it.id)) continue
-    const a = schedule.get(it.id)?.arrival
-    if (a != null) landing = landing == null ? a : Math.min(landing, a)
+  for (let i = 0; i < ordered.length; i++) {
+    if (!flightArrivalItemIds.has(ordered[i].id)) continue
+    lastArrivalIdx = i
+    landing = schedule.get(ordered[i].id)?.arrival ?? null
   }
 
   for (let i = 0; i < ordered.length; i++) {
@@ -37,26 +44,35 @@ export function computeDayWarnings(
       add(it.id, '停留時間為 0 或負值')
     }
 
-    // 站間衝突：只在本站抵達為「手填」時判斷（推算值不會自相矛盾）
+    // 站間衝突：只在本站抵達為「手填」時判斷（推算值不會自相矛盾）。
+    // 跨時區關鍵：上一站離開是「上一站當地時間」、本站抵達是「本站當地時間」，直接相比會錯；
+    // 須把上一站離開換算到本站時區（加兩站時差）再比，與 computeDaySchedule 的串接同規則。
     if (i > 0 && eff.arrivalManual && eff.arrival != null) {
       const prev = ordered[i - 1]
       const pEff = schedule.get(prev.id)
       if (pEff?.departure != null) {
-        if (eff.arrival < pEff.departure) {
-          add(it.id, `抵達早於上一站離開（${formatMin(pEff.departure)}），時間倒流`)
+        let tzAdjust = 0
+        const ptz = prev.timezone ?? tripTz ?? null
+        const itz = it.timezone ?? tripTz ?? null
+        if (atISO && ptz && itz && ptz !== itz) {
+          tzAdjust = tzOffsetMinutes(itz, atISO) - tzOffsetMinutes(ptz, atISO)
+        }
+        const prevDepHere = pEff.departure + tzAdjust // 上一站離開，換算到本站時區的牆鐘
+        if (eff.arrival < prevDepHere) {
+          add(it.id, `抵達早於上一站離開（${formatMin(prevDepHere)}），時間倒流`)
         } else {
           const dur = transportByPair.get(`${prev.id}|${it.id}`)?.duration_min
-          if (dur != null && eff.arrival < pEff.departure + dur) {
-            add(it.id, `交通可能趕不上（最快約 ${formatMin(pEff.departure + dur)} 才到）`)
+          if (dur != null && eff.arrival < prevDepHere + dur) {
+            add(it.id, `交通可能趕不上（最快約 ${formatMin(prevDepHere + dur)} 才到）`)
           }
         }
       }
     }
 
-    // 排在當日航班落地之前
+    // 排在當日航班落地之前（只查落地之後的目的地側項目；origin 側不誤報）
     if (
       landing != null &&
-      !flightArrivalItemIds.has(it.id) &&
+      i > lastArrivalIdx &&
       eff.arrival != null &&
       eff.arrival < landing
     ) {

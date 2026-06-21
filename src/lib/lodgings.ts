@@ -22,6 +22,7 @@ export interface CreateLodgingInput {
   lat: number | null
   lng: number | null
   google_place_id: string | null
+  photo_url?: string | null
   check_in: string // 'YYYY-MM-DD'
   check_out: string // 'YYYY-MM-DD'
   notes?: string | null
@@ -45,6 +46,7 @@ async function generateLodgingItems(lodging: Lodging): Promise<void> {
       lat: lodging.lat,
       lng: lodging.lng,
       google_place_id: lodging.google_place_id,
+      photo_url: lodging.photo_url, // 飯店照片帶到行程地標
       lodging_id: lodging.id,
       lodging_auto: true, // 自動產生的頭/尾；手動複製本為 false，住宿編輯重產生時不刪
     }
@@ -72,6 +74,7 @@ export async function createLodging(input: CreateLodgingInput): Promise<Lodging>
       lat: input.lat,
       lng: input.lng,
       google_place_id: input.google_place_id,
+      photo_url: input.photo_url ?? null,
       timezone: tzForCoords(input.lat, input.lng),
       check_in: input.check_in,
       check_out: input.check_out,
@@ -92,6 +95,7 @@ export interface UpdateLodgingInput {
   lat?: number | null
   lng?: number | null
   google_place_id?: string | null
+  photo_url?: string | null
   check_in?: string
   check_out?: string
   notes?: string | null

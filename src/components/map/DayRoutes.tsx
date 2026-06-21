@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Transport } from '../../lib/types'
+import { modeRouteColor } from './transitMeta'
 
 // 當天逐段交通的地圖路線（階段 3，取代舊 RoutePolyline 的單一直線）。
 // 每相鄰段：有 transport.route_polyline → 解碼畫實線（真實 Directions 路線）；
@@ -17,27 +18,23 @@ interface DayRoutesProps {
   visible: boolean
 }
 
-function primaryColor(): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()
-  return v || '#7a6cf0'
-}
-
 export default function DayRoutes({ stops, transportByPair, visible }: DayRoutesProps) {
   const map = useMap()
   const geometry = useMapsLibrary('geometry')
 
   useEffect(() => {
     if (!map || !visible || stops.length < 2) return
-    const color = primaryColor()
     const lines: google.maps.Polyline[] = []
 
     for (let i = 0; i < stops.length - 1; i++) {
       const a = stops[i]
       const b = stops[i + 1]
       const t = transportByPair.get(`${a.id}|${b.id}`)
+      // 依交通方式上色（功能：依移動方式視覺化）；未設定交通的段落用灰
+      const color = t ? modeRouteColor(t.mode) : '#938cab'
 
       if (t?.route_polyline && geometry) {
-        // 真實路線：實線
+        // 真實路線：實線（該模式色）
         lines.push(
           new google.maps.Polyline({
             map,
@@ -49,7 +46,7 @@ export default function DayRoutes({ stops, transportByPair, visible }: DayRoutes
           }),
         )
       } else {
-        // 未匯入 / 自定義：虛線直線（靠 icons 畫點，Polyline 才支援虛線）
+        // 未匯入 / 自定義 / 航班：虛線（該模式色；geodesic 讓航班等長距離呈大圓弧）
         lines.push(
           new google.maps.Polyline({
             map,

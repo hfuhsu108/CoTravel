@@ -45,7 +45,7 @@ export default function LodgingFormSheet({
           lat: lodging.lat,
           lng: lodging.lng,
           google_place_id: lodging.google_place_id,
-          photo_url: null,
+          photo_url: lodging.photo_url,
         }
       : null,
   )
@@ -84,6 +84,7 @@ export default function LodgingFormSheet({
           lat: place.lat,
           lng: place.lng,
           google_place_id: place.google_place_id,
+          photo_url: place.photo_url,
           check_in: checkIn,
           check_out: checkOut,
           notes: notes.trim() || null,
@@ -96,6 +97,7 @@ export default function LodgingFormSheet({
           lat: place.lat,
           lng: place.lng,
           google_place_id: place.google_place_id,
+          photo_url: place.photo_url,
           check_in: checkIn,
           check_out: checkOut,
           notes: notes.trim() || null,

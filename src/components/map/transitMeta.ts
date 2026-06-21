@@ -19,6 +19,24 @@ export function modeWord(mode: TransportMode): string {
   }
 }
 
+// 各交通方式的路線顏色（地圖逐段上色用，功能：依移動方式視覺化）。未設定交通的段落由呼叫端用灰。
+export function modeRouteColor(mode: TransportMode): string {
+  switch (mode) {
+    case 'walk':
+      return '#3bb98f' // 綠
+    case 'transit':
+      return '#4aa3e0' // 藍
+    case 'drive':
+      return '#f0a04b' // 橘
+    case 'flight':
+      return '#7a6cf0' // 紫（主色）
+    case 'bike':
+      return '#e0b020' // 金
+    case 'custom':
+      return '#938cab' // 灰
+  }
+}
+
 export function modeIcon(mode: TransportMode): IconName {
   switch (mode) {
     case 'walk':

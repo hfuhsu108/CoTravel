@@ -128,6 +128,17 @@ export async function deleteTrip(id: string): Promise<void> {
   if (error) throw error
 }
 
+// 退出旅程（非建立者）：刪除自己的成員列。RLS「leave own membership」只允許刪 user_id=auth.uid()，
+// 故即使少了 user_id filter 也只會刪到自己；這裡仍明確帶上以表意清楚。建立者請改用 deleteTrip。
+export async function leaveTrip(tripId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_members')
+    .delete()
+    .eq('trip_id', tripId)
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
 // 用邀請碼加入旅程（走 RPC：驗證碼、防重複、限兩人）。RPC 的 raise exception 訊息會帶在 error.message。
 export async function joinTripByCode(code: string): Promise<Trip> {
   const { data, error } = await supabase.rpc('join_trip_by_code', { p_code: code })

@@ -3,19 +3,19 @@ import Sheet from '../ui/Sheet'
 import Button from '../ui/Button'
 import Field, { inputClassName } from '../ui/Field'
 import Icon from '../Icon'
-import { PACK_CATEGORIES } from '../../lib/packing'
+import type { PackingCategory } from '../../lib/types'
 import { errMessage } from '../../lib/errMessage'
 
 interface AddPackSheetProps {
-  suggestions: string[] // 分類建議（預設 ∪ 本人已用過；功能 6 可自定義）
-  onAdd: (name: string, category: string) => Promise<void>
+  categories: PackingCategory[] // 我的分類（下拉來源；於「設定→行李分類」管理）
+  onAdd: (name: string, categoryId: string | null) => Promise<void>
   onClose: () => void
 }
 
-// 畫面 5 的「新增行李項目」sheet：品名 + 分類（可選建議或自行輸入），Enter 可送出
-export default function AddPackSheet({ suggestions, onAdd, onClose }: AddPackSheetProps) {
+// 畫面 5 的「新增行李項目」sheet：品名 + 分類（下拉，來源為各自管理的分類），Enter 可送出
+export default function AddPackSheet({ categories, onAdd, onClose }: AddPackSheetProps) {
   const [name, setName] = useState('')
-  const [category, setCategory] = useState<string>(PACK_CATEGORIES[0])
+  const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +26,7 @@ export default function AddPackSheet({ suggestions, onAdd, onClose }: AddPackShe
     setSaving(true)
     setError(null)
     try {
-      await onAdd(trimmed, category.trim() || '其他')
+      await onAdd(trimmed, categoryId || null)
       onClose()
     } catch (err) {
       setError(errMessage(err))
@@ -52,19 +52,24 @@ export default function AddPackSheet({ suggestions, onAdd, onClose }: AddPackShe
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
-        <Field label="分類（可選建議或自行輸入）">
-          <input
-            className={inputClassName}
-            list="pack-category-suggestions"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="例如：證件、藥品、嬰兒用品"
-          />
-          <datalist id="pack-category-suggestions">
-            {suggestions.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+        <Field label="分類">
+          {categories.length === 0 ? (
+            <p className="rounded-[13px] border-[1.5px] border-line-strong bg-surface-2 px-[14px] py-[12px] text-[13px] leading-[1.5] text-ink-3">
+              還沒有分類。請到「設定 → 行李分類」新增分類後再來。
+            </p>
+          ) : (
+            <select
+              className={inputClassName}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
         </Field>
         {error && <p className="mb-3 text-[13px] text-danger">{error}</p>}
         <Button type="submit" block disabled={!name.trim() || saving}>

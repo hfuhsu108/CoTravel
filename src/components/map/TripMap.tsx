@@ -11,13 +11,15 @@ import { displayName } from '../../lib/itinerary'
 import { env } from '../../lib/env'
 import { errMessage } from '../../lib/errMessage'
 import { fetchPoiDetails, type PoiDetails } from '../../lib/places'
-import Icon from '../Icon'
+import { DEFAULT_LIST_COLOR, DEFAULT_LIST_ICON, safeListIcon } from '../../lib/bookmarkLists'
+import Icon, { type IconName } from '../Icon'
 import MapCircle from './MapCircle'
 import DayRoutes, { type RouteStop } from './DayRoutes'
 
 interface TripMapProps {
   dayItems: Item[] // 當天 scheduled（point + area），已依 order_index 排序
   bookmarks: Item[] // status=bookmark（跨天都顯示）
+  listMetaByName: Map<string, { icon: string; color: string }> // 清單名 → icon/顏色（書籤 marker 用）
   transportByPair: Map<string, Transport> // 相鄰段交通（畫真實路線用），key `${fromId}|${toId}`
   selectedItemId: string | null
   showRoute: boolean
@@ -39,6 +41,7 @@ const DEFAULT_ZOOM = 9
 export default function TripMap({
   dayItems,
   bookmarks,
+  listMetaByName,
   transportByPair,
   selectedItemId,
   showRoute,
@@ -113,11 +116,12 @@ export default function TripMap({
           a.lat != null &&
           a.lng != null && (
             <Fragment key={a.id}>
+              {/* 圈圈不可點（clickable:false）→ 不再攔截下方 marker/POI 的點擊；
+                  區域選取改由中心的 AreaLabel pin 負責（見下方 AdvancedMarker onClick） */}
               <MapCircle
                 center={{ lat: a.lat, lng: a.lng }}
                 radius={a.radius_m ?? 300}
                 selected={selectedItemId === a.id}
-                onClick={() => onSelectItem(a)}
               />
               <AdvancedMarker
                 position={{ lat: a.lat, lng: a.lng }}
@@ -131,22 +135,31 @@ export default function TripMap({
           ),
       )}
 
-      {/* 書籤：愛心（粉，單一狀態「想去」） */}
-      {bookmarks.map(
-        (b) =>
-          b.lat != null &&
-          b.lng != null && (
-            <AdvancedMarker
-              key={b.id}
-              position={{ lat: b.lat, lng: b.lng }}
-              anchorPoint={AdvancedMarkerAnchorPoint.CENTER}
-              zIndex={selectedItemId === b.id ? 21 : 6}
-              onClick={() => onSelectItem(b)}
-            >
-              <HeartMarker dim={!!selectedItemId && selectedItemId !== b.id} />
-            </AdvancedMarker>
-          ),
-      )}
+      {/* 書籤：水滴，套所屬清單的 icon + 顏色（取 tags 第一個有 metadata 的清單，無則回退預設） */}
+      {bookmarks.map((b) => {
+        if (b.lat == null || b.lng == null) return null
+        let icon: IconName = DEFAULT_LIST_ICON
+        let color = DEFAULT_LIST_COLOR
+        for (const tag of b.tags) {
+          const m = listMetaByName.get(tag)
+          if (m) {
+            icon = safeListIcon(m.icon)
+            color = m.color
+            break
+          }
+        }
+        return (
+          <AdvancedMarker
+            key={b.id}
+            position={{ lat: b.lat, lng: b.lng }}
+            anchorPoint={AdvancedMarkerAnchorPoint.CENTER}
+            zIndex={selectedItemId === b.id ? 21 : 6}
+            onClick={() => onSelectItem(b)}
+          >
+            <ListMarker icon={icon} color={color} dim={!!selectedItemId && selectedItemId !== b.id} />
+          </AdvancedMarker>
+        )
+      })}
 
       {/* 定點：編號水滴 pin */}
       {points.map(
@@ -237,7 +250,8 @@ function PinMarker({ n, selected, dim }: { n: number; selected: boolean; dim: bo
   )
 }
 
-function HeartMarker({ dim }: { dim: boolean }) {
+// 書籤水滴 marker：套清單顏色為底、清單 icon 為白色（同一外型，顏色/圖示由所屬清單決定）
+function ListMarker({ icon, color, dim }: { icon: IconName; color: string; dim: boolean }) {
   return (
     <div style={{ opacity: dim ? 0.45 : 1, transition: 'opacity .2s' }}>
       <div
@@ -246,7 +260,7 @@ function HeartMarker({ dim }: { dim: boolean }) {
           height: 26,
           borderRadius: '50% 50% 50% 2px',
           transform: 'rotate(45deg)',
-          background: 'var(--pink)',
+          background: color,
           border: '2.5px solid #fff',
           boxShadow: 'var(--sh-2)',
           display: 'flex',
@@ -255,7 +269,7 @@ function HeartMarker({ dim }: { dim: boolean }) {
         }}
       >
         <span style={{ transform: 'rotate(-45deg)', color: '#fff', display: 'flex' }}>
-          <Icon name="heart" size={13} fill />
+          <Icon name={icon} size={13} fill />
         </span>
       </div>
     </div>

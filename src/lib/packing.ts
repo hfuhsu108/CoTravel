@@ -4,7 +4,7 @@
 import { supabase } from './supabase'
 import type { PackingItem } from './types'
 
-// 分類固定清單（對應 prototype AddPackSheet 的 select 選項；分組顯示也照此順序）
+// 預設分類種子（每人首次使用時補建進 packing_categories；分類本體改為各自管理的 DB 列）
 export const PACK_CATEGORIES = ['證件', '電子產品', '盥洗', '衣物', '其他'] as const
 
 export async function listPackingItems(tripId: string): Promise<PackingItem[]> {
@@ -21,7 +21,7 @@ export async function addPackingItem(input: {
   trip_id: string
   owner_user_id: string
   name: string
-  category: string
+  category_id: string | null
 }): Promise<PackingItem> {
   const { data, error } = await supabase
     .from('packing_items')
@@ -29,7 +29,7 @@ export async function addPackingItem(input: {
       trip_id: input.trip_id,
       owner_user_id: input.owner_user_id,
       name: input.name,
-      category: input.category,
+      category_id: input.category_id,
     })
     .select()
     .single()

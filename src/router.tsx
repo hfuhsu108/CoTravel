@@ -1,4 +1,4 @@
-import { createHashRouter, Navigate, Outlet } from 'react-router-dom'
+import { createHashRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthProvider, RequireAuth } from './lib/auth'
 import Login from './routes/Login'
 import TripList from './routes/TripList'
@@ -8,11 +8,19 @@ import DocsTab from './routes/tabs/DocsTab'
 import PackingTab from './routes/tabs/PackingTab'
 import SettingsTab from './routes/tabs/SettingsTab'
 
-// App 外殼：以 AuthProvider 包裹全站，內容置中於手機寬度欄（桌面寬版兩側留白、手機滿版）。
+// App 外殼：以 AuthProvider 包裹全站。
+// 旅程內頁（/trips/:id/...）走寬版（寬螢幕＝地圖左側常駐 + 行程右欄，見 MapTab）；
+// 其餘（登入、旅程列表）維持手機寬度置中欄（桌面兩側留白、手機滿版）。
 function AppRoot() {
+  const { pathname } = useLocation()
+  const wideRoute = /^\/trips\/[^/]+/.test(pathname)
   return (
     <AuthProvider>
-      <div className="relative mx-auto h-[100dvh] w-full max-w-[480px] overflow-hidden bg-bg">
+      <div
+        className={`relative h-[100dvh] w-full overflow-hidden bg-bg ${
+          wideRoute ? '' : 'mx-auto max-w-[480px]'
+        }`}
+      >
         <Outlet />
       </div>
     </AuthProvider>

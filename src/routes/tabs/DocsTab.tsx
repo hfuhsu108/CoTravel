@@ -314,7 +314,7 @@ export default function DocsTab() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col lg:relative lg:mx-auto lg:w-full lg:max-w-[720px]">
       {/* appbar：標題 + 離線狀態鈕（線上可手動切預覽；真離線時鎖定） */}
       <div className="flex flex-none items-center justify-between px-4 pb-2 pt-3">
         <h1 className="text-[26px] font-bold tracking-[-0.02em]">文件匣</h1>

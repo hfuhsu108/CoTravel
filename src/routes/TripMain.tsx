@@ -20,21 +20,17 @@ export default function TripMain() {
 
   return (
     <TripRealtimeProvider tripId={tripId} meId={user?.id ?? ''}>
-      <div className="flex h-full flex-col">
-        {/* 各分頁自管捲動；地圖分頁需全幅，故這裡 overflow-hidden + relative 供浮層定位 */}
-        <main className="relative flex-1 overflow-hidden">
-          <Outlet />
-          <ActivityBanner />
-        </main>
-
-        {/* 底部三分頁（z 低於地圖浮層/側欄/詳情，數值見各浮層元件） */}
-        <nav className="z-10 flex flex-none border-t border-line bg-surface px-[10px] pb-7 pt-[9px]">
+      {/* 窄螢幕：上內容 + 下分頁列（col-reverse 讓 DOM 先放 nav 仍顯示在下）。
+          寬螢幕：左側直立 nav rail + 右側內容（row）。 */}
+      <div className="flex h-full flex-col-reverse lg:flex-row">
+        {/* 分頁導覽：窄=底部列、寬=左側 rail（z 低於地圖浮層/側欄/詳情） */}
+        <nav className="z-10 flex flex-none border-line bg-surface border-t px-[10px] pb-7 pt-[9px] lg:w-[80px] lg:flex-col lg:gap-1 lg:border-r lg:border-t-0 lg:px-2 lg:pb-4 lg:pt-5">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                `flex flex-1 flex-col items-center gap-1 rounded-[14px] py-[6px] text-[11px] font-bold ${
+                `flex flex-1 flex-col items-center gap-1 rounded-[14px] py-[6px] text-[11px] font-bold lg:flex-none ${
                   isActive ? 'text-primary-deep' : 'text-ink-3'
                 }`
               }
@@ -54,6 +50,12 @@ export default function TripMain() {
             </NavLink>
           ))}
         </nav>
+
+        {/* 各分頁自管捲動；地圖分頁需全幅，故這裡 overflow-hidden + relative 供浮層定位 */}
+        <main className="relative flex-1 overflow-hidden">
+          <Outlet />
+          <ActivityBanner />
+        </main>
       </div>
     </TripRealtimeProvider>
   )

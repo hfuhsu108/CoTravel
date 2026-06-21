@@ -2,15 +2,6 @@
 // 對 2 人小資料量採「抓含該 tag 的 items、逐筆更新」（簡單可靠）。RLS 限該趟成員可寫。
 import { supabase } from './supabase'
 
-// 本趟所有清單（distinct tags，排序）
-export async function listTripTags(tripId: string): Promise<string[]> {
-  const { data, error } = await supabase.from('items').select('tags').eq('trip_id', tripId)
-  if (error) throw error
-  const s = new Set<string>()
-  for (const r of data ?? []) for (const t of (r as { tags: string[] }).tags ?? []) s.add(t)
-  return [...s].sort((a, b) => a.localeCompare(b))
-}
-
 // 改名 / 合併：把所有含 from 的 items 的該 tag 換成 to（去重）。合併＝to 已存在。
 export async function renameTagAcrossTrip(
   tripId: string,

@@ -152,6 +152,7 @@ export interface Lodging {
   lat: number | null
   lng: number | null
   google_place_id: string | null
+  photo_url: string | null // 飯店照片（搜尋時抓；同步到行程地標用）
   timezone: string | null
   check_in: string // 'YYYY-MM-DD' 入住日
   check_out: string // 'YYYY-MM-DD' 退房日
@@ -190,8 +191,30 @@ export interface PackingItem {
   trip_id: string
   owner_user_id: string // 誰的行李（RLS：只有本人能寫）
   name: string
-  category: string | null // 證件 / 電子產品 / 盥洗...
+  category_id: string | null // → packing_categories.id；null = 未分類
   is_packed: boolean
+  created_at: string
+}
+
+// 行李分類（各自管理；對應 packing_categories）。RLS：成員可讀、只有本人能寫。
+export interface PackingCategory {
+  id: string
+  trip_id: string
+  owner_user_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+// 景點清單 metadata（對應 bookmark_lists）。清單仍以 items.tags 的「名稱」歸屬，
+// 本表以 (trip_id, name) 為鍵掛 icon/顏色，供地圖 marker 顯示。
+export interface BookmarkList {
+  id: string
+  trip_id: string
+  name: string
+  icon: string // 取自前端 Icon 集（見 lib/bookmarkLists 的 LIST_ICONS）
+  color: string // hex（見 LIST_COLORS）
+  sort_order: number
   created_at: string
 }
 

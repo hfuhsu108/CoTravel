@@ -27,6 +27,7 @@ interface DaySidebarProps {
   schedule?: Map<string, EffTime> // 有效時間（抵達/離開顯示用）
   warningsByItem?: Map<string, string[]> // 各項目時間警告
   warningCount?: number // 當天警告總數
+  wide?: boolean // 寬螢幕：當作右側固定欄（非底部抽屜）
 }
 
 // 當日行程側欄（畫面 2）：底部升起的圓角面板，列出定點/區域卡（混排），底部「＋ 加項目」。
@@ -49,6 +50,7 @@ export default function DaySidebar({
   schedule,
   warningsByItem,
   warningCount = 0,
+  wide = false,
 }: DaySidebarProps) {
   // 編號只算定點（依 order_index）；區域不給編號
   const points = items.filter((i) => i.type === 'point')
@@ -56,10 +58,16 @@ export default function DaySidebar({
 
   return (
     <div
-      className="absolute inset-x-0 bottom-0 top-[150px] z-20 flex flex-col rounded-t-[26px] bg-bg animate-slideup"
-      style={{ boxShadow: '0 -10px 40px rgba(40,28,90,.2)' }}
+      className={
+        wide
+          ? 'relative z-10 flex h-full w-[400px] flex-none flex-col border-l border-line bg-bg'
+          : 'absolute inset-x-0 bottom-0 top-[150px] z-20 flex flex-col rounded-t-[26px] bg-bg animate-slideup'
+      }
+      style={wide ? undefined : { boxShadow: '0 -10px 40px rgba(40,28,90,.2)' }}
     >
-      <div className="mx-auto mb-1 mt-[6px] h-[5px] w-[42px] flex-none rounded-full bg-line-strong" />
+      {!wide && (
+        <div className="mx-auto mb-1 mt-[6px] h-[5px] w-[42px] flex-none rounded-full bg-line-strong" />
+      )}
 
       <div className="flex items-center justify-between px-[18px] pb-3 pt-1">
         <div>
@@ -105,14 +113,16 @@ export default function DaySidebar({
           >
             <Icon name="nav" size={18} />
           </button>
-          <button
-            type="button"
-            onClick={onCollapse}
-            title="收合"
-            className="flex h-10 w-10 items-center justify-center rounded-[13px] border border-line bg-surface text-ink-2 shadow-1 active:scale-95"
-          >
-            <Icon name="chevD" size={18} />
-          </button>
+          {!wide && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              title="收合"
+              className="flex h-10 w-10 items-center justify-center rounded-[13px] border border-line bg-surface text-ink-2 shadow-1 active:scale-95"
+            >
+              <Icon name="chevD" size={18} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -162,6 +172,7 @@ export default function DaySidebar({
                     {showTransit && (
                       <TransitRow
                         transport={transport}
+                        latestDeparture={schedule?.get(it.id)?.latestDeparture ?? null}
                         onClick={() => onSelectTransport(it, next, transport)}
                       />
                     )}

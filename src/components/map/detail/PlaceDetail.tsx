@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Day, Document, Item } from '../../../lib/types'
 import { displayName, type ItemPatch } from '../../../lib/itinerary'
-import { tzForCoords, tzOffsetLabel, tzLabel } from '../../../lib/time'
+import { formatDurationZh, tzForCoords, tzOffsetLabel, tzLabel } from '../../../lib/time'
 import { formatMin, parseHHMM, type EffTime } from '../../../lib/schedule'
 import Icon from '../../Icon'
+import Time24Field from '../../ui/Time24Field'
 import LinkedDocs from '../../docs/LinkedDocs'
 import { DetailHead, InfoRow, Eyebrow } from './parts'
 import MoveRemoveActions from './MoveRemoveActions'
@@ -151,7 +152,7 @@ export default function PlaceDetail({
     if (!time && effTime.arrival != null && !effTime.arrivalManual)
       derivedParts.push(`抵達 ${formatMin(effTime.arrival)}`)
     if (!stay && effTime.stay != null && !effTime.stayManual)
-      derivedParts.push(`停留 ${effTime.stay} 分`)
+      derivedParts.push(`停留 ${formatDurationZh(effTime.stay)}`)
     if (!departure && effTime.departure != null && !effTime.departureManual)
       derivedParts.push(`離開 ${formatMin(effTime.departure)}`)
   }
@@ -227,17 +228,17 @@ export default function PlaceDetail({
         <div className="mt-2 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[12px] font-semibold text-ink-3">抵達</span>
-            <input
-              type="time"
+            <Time24Field
               value={time}
               disabled={busy}
-              onChange={(e) => setTime(e.target.value)}
-              onBlur={() => {
-                const next = time || null
+              onChange={setTime}
+              onCommit={(v) => {
+                const next = v || null
                 if (next !== (item.scheduled_time?.slice(0, 5) ?? null))
                   void saveIfChanged({ scheduled_time: next })
               }}
-              className={timeInputClass}
+              className={`${timeInputClass} w-[84px] text-center`}
+              ariaLabel="抵達時間"
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -258,17 +259,17 @@ export default function PlaceDetail({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[12px] font-semibold text-ink-3">離開</span>
-            <input
-              type="time"
+            <Time24Field
               value={departure}
               disabled={busy}
-              onChange={(e) => setDeparture(e.target.value)}
-              onBlur={() => {
-                const next = departure || null
+              onChange={setDeparture}
+              onCommit={(v) => {
+                const next = v || null
                 if (next !== (item.departure_time?.slice(0, 5) ?? null))
                   void saveIfChanged({ departure_time: next })
               }}
-              className={timeInputClass}
+              className={`${timeInputClass} w-[84px] text-center`}
+              ariaLabel="離開時間"
             />
           </label>
           {showTz && itemTz && (

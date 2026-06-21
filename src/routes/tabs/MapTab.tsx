@@ -33,6 +33,7 @@ import {
   type ItemPatch,
 } from '../../lib/itinerary'
 import { listTransports, removeTransport, upsertTransport } from '../../lib/transports'
+import { ensureListsExist, listBookmarkLists } from '../../lib/bookmarkLists'
 import { logActivity } from '../../lib/activity'
 import { tzForCoords } from '../../lib/time'
 import { computeDaySchedule } from '../../lib/schedule'
@@ -41,7 +42,8 @@ import { useTripRealtime } from '../../lib/tripRealtime'
 import { errMessage } from '../../lib/errMessage'
 import { env } from '../../lib/env'
 import { formatRange } from '../../lib/date'
-import type { AreaCandidate, Day, Item, Transport, TripWithMembers } from '../../lib/types'
+import { useIsWide } from '../../lib/useIsWide'
+import type { AreaCandidate, BookmarkList, Day, Item, Transport, TripWithMembers } from '../../lib/types'
 import Icon from '../../components/Icon'
 import Sheet from '../../components/ui/Sheet'
 import TripMap from '../../components/map/TripMap'
@@ -78,12 +80,14 @@ export default function MapTab() {
   const { user } = useAuth()
   const meId = user?.id ?? ''
   const { ticks, unread, markSeen } = useTripRealtime()
+  const isWide = useIsWide() // 寬螢幕：地圖左側常駐 + 當日行程右欄（決策 1）
 
   const [trip, setTrip] = useState<TripWithMembers | null>(null)
   const [days, setDays] = useState<Day[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [candidates, setCandidates] = useState<AreaCandidate[]>([])
   const [transports, setTransports] = useState<Transport[]>([])
+  const [listMetas, setListMetas] = useState<BookmarkList[]>([])
   const [currentDayId, setCurrentDayId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [showRoute, setShowRoute] = useState(true)
@@ -124,12 +128,14 @@ export default function MapTab() {
         const areaIds = its.filter((i) => i.type === 'area').map((i) => i.id)
         const cands = await listCandidatesByItems(areaIds)
         const trs = await listTransports(tripId)
+        const lists = await listBookmarkLists(tripId)
         if (!active) return
         setTrip(t)
         setDays(d)
         setItems(its)
         setCandidates(cands)
         setTransports(trs)
+        setListMetas(lists)
         const today = todayStr()
         setCurrentDayId(d.find((x) => x.date === today)?.id ?? d[0]?.id ?? null)
       } catch (e) {
@@ -177,6 +183,14 @@ export default function MapTab() {
       setTransports(await listTransports(tripId))
     } catch (e) {
       console.warn('[map] 交通即時刷新失敗', e)
+    }
+  }, [tripId])
+
+  const reloadLists = useCallback(async () => {
+    try {
+      setListMetas(await listBookmarkLists(tripId))
+    } catch (e) {
+      console.warn('[map] 清單即時刷新失敗', e)
     }
   }, [tripId])
 
@@ -247,6 +261,17 @@ export default function MapTab() {
     queueReload('transports')
   }, [transportsTick, queueReload])
 
+  // 清單 metadata（icon/顏色）他處變更 → 刷新（不走拖拉 debounce，直接重載）
+  const listsTick = ticks.bookmark_lists
+  const firstListsTickRef = useRef(true)
+  useEffect(() => {
+    if (firstListsTickRef.current) {
+      firstListsTickRef.current = false
+      return
+    }
+    void reloadLists()
+  }, [listsTick, reloadLists])
+
   const candidatesByItem = useMemo(() => {
     const m = new Map<string, AreaCandidate[]>()
     for (const c of candidates) {
@@ -272,18 +297,31 @@ export default function MapTab() {
         .sort((a, b) => a.order_index - b.order_index),
     [items, currentDayId],
   )
+  // 功能 5：旅程主時區（目的地座標推得；無座標項目的時差退路、詳情頁判斷異區用）
+  const tripTz = useMemo(
+    () => tzForCoords(trip?.dest_lat ?? null, trip?.dest_lng ?? null),
+    [trip?.dest_lat, trip?.dest_lng],
+  )
   // 功能 4/8：當天三時間推算（抵達/停留/離開、跨站串接）與時間防呆警告
   const daySchedule = useMemo(
-    () => computeDaySchedule(dayItems, transportByPair, currentDay?.date ?? null),
-    [dayItems, transportByPair, currentDay?.date],
+    () => computeDaySchedule(dayItems, transportByPair, currentDay?.date ?? null, tripTz),
+    [dayItems, transportByPair, currentDay?.date, tripTz],
   )
   const flightArrivalItemIds = useMemo(
     () => new Set(transports.filter((t) => t.mode === 'flight').map((t) => t.to_item_id)),
     [transports],
   )
   const dayWarnings = useMemo(
-    () => computeDayWarnings(dayItems, transportByPair, daySchedule, flightArrivalItemIds),
-    [dayItems, transportByPair, daySchedule, flightArrivalItemIds],
+    () =>
+      computeDayWarnings(
+        dayItems,
+        transportByPair,
+        daySchedule,
+        flightArrivalItemIds,
+        currentDay?.date ?? null,
+        tripTz,
+      ),
+    [dayItems, transportByPair, daySchedule, flightArrivalItemIds, currentDay?.date, tripTz],
   )
   const dayWarningCount = useMemo(() => {
     let n = 0
@@ -300,6 +338,14 @@ export default function MapTab() {
     for (const i of items) for (const t of i.tags) s.add(t)
     return [...s].sort((a, b) => a.localeCompare(b))
   }, [items])
+  // 清單名 → icon/顏色（書籤 marker 用）
+  const listMetaByName = useMemo(
+    () =>
+      new Map<string, { icon: string; color: string }>(
+        listMetas.map((l) => [l.name, { icon: l.icon, color: l.color }]),
+      ),
+    [listMetas],
+  )
 
   // 功能 3：地圖預設視野退路。當天無項目 → 旅程目的地座標；再無 → 整趟所有項目座標。
   const fallbackCenter = useMemo<google.maps.LatLngLiteral | null>(
@@ -316,12 +362,6 @@ export default function MapTab() {
         .map((i) => ({ lat: i.lat as number, lng: i.lng as number })),
     [items],
   )
-  // 功能 5：旅程主時區（由目的地座標推得；詳情頁據此判斷地點是否在不同時區）
-  const tripTz = useMemo(
-    () => tzForCoords(trip?.dest_lat ?? null, trip?.dest_lng ?? null),
-    [trip?.dest_lat, trip?.dest_lng],
-  )
-
   const detailItem = items.find((i) => i.id === detailItemId) ?? null
   const popupItem = items.find((i) => i.id === popupItemId) ?? null
 
@@ -417,6 +457,12 @@ export default function MapTab() {
       tags: lists,
     })
     setItems((its) => [...its, newItem])
+    // 新清單名補建 metadata 列（best-effort：失敗不影響書籤本身）
+    try {
+      await ensureListsExist(tripId, lists)
+    } catch (e) {
+      console.warn('[map] 補建清單 metadata 失敗', e)
+    }
     logActivity(tripId, meId, 'item_add', `把「${place.name}」加進書籤（${lists.join('、')}）`)
     setPendingBookmark(null)
   }
@@ -680,45 +726,9 @@ export default function MapTab() {
   }
 
   return (
-    <div className="absolute inset-0 bg-map-bg">
+    <div className="absolute inset-0 flex bg-map-bg">
       <APIProvider apiKey={env.googleMapsApiKey} language="zh-TW" region="TW">
-        <TripMap
-          dayItems={dayItems}
-          bookmarks={bookmarks}
-          transportByPair={transportByPair}
-          selectedItemId={selectedItemId}
-          showRoute={showRoute}
-          areaMode={areaMode}
-          fallbackCenter={fallbackCenter}
-          allCoords={allCoords}
-          onSelectItem={(it) => {
-            setSelectedItemId(it.id)
-            setPopupItemId(it.id)
-            setPoi(null)
-          }}
-          onMapClick={handleMapClick}
-          onPoiSelected={(p) => {
-            setPoi(p)
-            setPopupItemId(null)
-            setSelectedItemId(null)
-          }}
-          onPoiError={(m) => setError(m)}
-        />
-
-        {trip && (
-          <MapTopBar
-            tripName={trip.name}
-            dateRange={formatRange(trip.start_date, trip.end_date)}
-            members={trip.members}
-            meId={meId}
-            unread={unread}
-            onBell={() => {
-              markSeen()
-              setNotifOpen(true)
-            }}
-          />
-        )}
-
+        {/* DnD 同時包住 DayTabs（放置目標）與 DaySidebar（拖拉來源），故置於雙欄之上 */}
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
@@ -729,21 +739,105 @@ export default function MapTab() {
             endDragGuard()
           }}
         >
-          <div
-            className="pointer-events-none absolute inset-x-0 z-30 px-3"
-            style={{ top: 'calc(env(safe-area-inset-top) + 58px)' }}
-          >
-            <div className="pointer-events-auto">
-              <DayTabs
-                days={days}
-                currentDayId={currentDayId}
-                dragging={activeDragId !== null}
-                onSelect={selectDay}
+          {/* 左：地圖區（窄=全幅；寬=flex-1）。浮層都放這層、相對地圖區定位，
+              寬螢幕時自動只佔左半、不會被右側行程欄蓋到。 */}
+          <div className="relative min-w-0 flex-1">
+            <TripMap
+              dayItems={dayItems}
+              bookmarks={bookmarks}
+              listMetaByName={listMetaByName}
+              transportByPair={transportByPair}
+              selectedItemId={selectedItemId}
+              showRoute={showRoute}
+              areaMode={areaMode}
+              fallbackCenter={fallbackCenter}
+              allCoords={allCoords}
+              onSelectItem={(it) => {
+                setSelectedItemId(it.id)
+                setPopupItemId(it.id)
+                setPoi(null)
+              }}
+              onMapClick={handleMapClick}
+              onPoiSelected={(p) => {
+                setPoi(p)
+                setPopupItemId(null)
+                setSelectedItemId(null)
+              }}
+              onPoiError={(m) => setError(m)}
+            />
+
+            {trip && (
+              <MapTopBar
+                tripName={trip.name}
+                dateRange={formatRange(trip.start_date, trip.end_date)}
+                members={trip.members}
+                meId={meId}
+                unread={unread}
+                onBell={() => {
+                  markSeen()
+                  setNotifOpen(true)
+                }}
               />
+            )}
+
+            <div
+              className="pointer-events-none absolute inset-x-0 z-30 px-3"
+              style={{ top: 'calc(env(safe-area-inset-top) + 58px)' }}
+            >
+              <div className="pointer-events-auto">
+                <DayTabs
+                  days={days}
+                  currentDayId={currentDayId}
+                  dragging={activeDragId !== null}
+                  onSelect={selectDay}
+                />
+              </div>
             </div>
+
+            {/* 圈區域模式：頂部提示 */}
+            {areaMode && (
+              <div
+                className="absolute inset-x-4 z-[55] flex items-center gap-2 rounded-2xl bg-[#2b2440] px-4 py-3 text-white shadow-3"
+                style={{ top: 'calc(env(safe-area-inset-top) + 120px)' }}
+              >
+                <Icon name="layers" size={18} />
+                <span className="flex-1 text-[13px] font-semibold">點地圖選擇區域中心</span>
+                <button type="button" onClick={() => setAreaMode(false)} aria-label="取消">
+                  <Icon name="x" size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* marker 小卡（圈區域模式時不顯示，避免遮擋） */}
+            {popupItem && !areaMode && (
+              <MarkerPopup
+                item={popupItem}
+                days={days}
+                onClose={() => {
+                  setPopupItemId(null)
+                  setSelectedItemId(null)
+                }}
+                onOpenDetail={() => {
+                  setDetailItemId(popupItem.id)
+                  setPopupItemId(null)
+                }}
+                onScheduleToDay={(dayId) => handleMoveDay(popupItem.id, dayId)}
+              />
+            )}
+
+            {/* POI 資訊卡（點 Google 地標；圈區域模式時不顯示） */}
+            {poi && !areaMode && (
+              <PoiPopup
+                poi={poi}
+                dayLabel={dayLabelOf(currentDayId)}
+                onClose={() => setPoi(null)}
+                onAdd={handleAddPoi}
+              />
+            )}
           </div>
 
-          {collapsed ? (
+          {/* 右：當日行程面板。窄螢幕＝可收合的底部抽屜；寬螢幕＝右側固定欄、恆顯示 */}
+          {!isWide && collapsed ? (
             <div className="absolute inset-x-4 bottom-6 z-20 flex gap-[9px]">
               <button
                 type="button"
@@ -764,6 +858,7 @@ export default function MapTab() {
             </div>
           ) : (
             <DaySidebar
+              wide={isWide}
               day={currentDay}
               items={dayItems}
               candidatesByItem={candidatesByItem}
@@ -792,47 +887,6 @@ export default function MapTab() {
             />
           )}
         </DndContext>
-
-        {/* 圈區域模式：頂部提示 */}
-        {areaMode && (
-          <div
-            className="absolute inset-x-4 z-[55] flex items-center gap-2 rounded-2xl bg-[#2b2440] px-4 py-3 text-white shadow-3"
-            style={{ top: 'calc(env(safe-area-inset-top) + 120px)' }}
-          >
-            <Icon name="layers" size={18} />
-            <span className="flex-1 text-[13px] font-semibold">點地圖選擇區域中心</span>
-            <button type="button" onClick={() => setAreaMode(false)} aria-label="取消">
-              <Icon name="x" size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* marker 小卡（圈區域模式時不顯示，避免遮擋） */}
-        {popupItem && !areaMode && (
-          <MarkerPopup
-            item={popupItem}
-            days={days}
-            onClose={() => {
-              setPopupItemId(null)
-              setSelectedItemId(null)
-            }}
-            onOpenDetail={() => {
-              setDetailItemId(popupItem.id)
-              setPopupItemId(null)
-            }}
-            onScheduleToDay={(dayId) => handleMoveDay(popupItem.id, dayId)}
-          />
-        )}
-
-        {/* POI 資訊卡（點 Google 地標；圈區域模式時不顯示） */}
-        {poi && !areaMode && (
-          <PoiPopup
-            poi={poi}
-            dayLabel={dayLabelOf(currentDayId)}
-            onClose={() => setPoi(null)}
-            onAdd={handleAddPoi}
-          />
-        )}
 
         {/* 詳情頁（畫面 3） */}
         {detailItem && trip && (

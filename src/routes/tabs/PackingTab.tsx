@@ -3,20 +3,21 @@ import { useParams } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useTripRealtime } from '../../lib/tripRealtime'
 import {
-  PACK_CATEGORIES,
   addPackingItem,
   listPackingItems,
   removePackingItem,
   setPackingPacked,
 } from '../../lib/packing'
+import { ensureDefaultCategories, listCategories } from '../../lib/packingCategories'
 import { errMessage } from '../../lib/errMessage'
-import type { PackingItem } from '../../lib/types'
+import type { PackingCategory, PackingItem } from '../../lib/types'
 import Icon from '../../components/Icon'
 import Avatar from '../../components/Avatar'
 import AddPackSheet from '../../components/packing/AddPackSheet'
 
 // 畫面 5 行李清單：依個人分的清單 + 勾選 + 完成度。兩人互看，對方唯讀（UI 擋 + RLS 擋）。
 // 行李變動不寫 activity_log（勾選高頻會洗版），靠 Realtime tick 即時同步對方進度。
+// 分類為「各自管理」：分組依 category_id → 分類名（由 packing_categories 載入）。
 export default function PackingTab() {
   const { tripId = '' } = useParams()
   const { user } = useAuth()
@@ -28,6 +29,7 @@ export default function PackingTab() {
 
   const [who, setWho] = useState<'me' | 'partner'>('me')
   const [list, setList] = useState<PackingItem[]>([])
+  const [catsByOwner, setCatsByOwner] = useState<Record<string, PackingCategory[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -64,38 +66,59 @@ export default function PackingTab() {
       .catch((e) => console.warn('[packing] 即時刷新失敗', e))
   }, [packTick, tripId])
 
+  // 分類：載我自己的（首次補建預設）＋夥伴的（唯讀分組用）；packing_categories 變更時刷新
+  const catTick = ticks.packing_categories
+  useEffect(() => {
+    let active = true
+    async function loadCats() {
+      try {
+        const mine = await ensureDefaultCategories(tripId, meId)
+        const next: Record<string, PackingCategory[]> = { [meId]: mine }
+        if (partner?.user_id) {
+          next[partner.user_id] = await listCategories(tripId, partner.user_id)
+        }
+        if (active) setCatsByOwner(next)
+      } catch (e) {
+        if (active) console.warn('[packing] 載入分類失敗', e)
+      }
+    }
+    void loadCats()
+    return () => {
+      active = false
+    }
+  }, [tripId, meId, partner?.user_id, catTick])
+
   const mine = who === 'me'
   const viewedUserId = mine ? meId : (partner?.user_id ?? '')
   const viewed = useMemo(
     () => list.filter((p) => p.owner_user_id === viewedUserId),
     [list, viewedUserId],
   )
-  // 動態分組（功能 6：分類可自定義）：預設分類依固定順序在前、自訂分類其後（依字母）、「其他」殿後
-  const groups = useMemo(() => {
-    const byCat = new Map<string, PackingItem[]>()
-    for (const p of viewed) {
-      const cat = p.category?.trim() || '其他'
-      const arr = byCat.get(cat) ?? []
-      arr.push(p)
-      byCat.set(cat, arr)
-    }
-    const defaultsPresent = PACK_CATEGORIES.filter((c) => c !== '其他' && byCat.has(c))
-    const customs = [...byCat.keys()]
-      .filter((c) => c !== '其他' && !(PACK_CATEGORIES as readonly string[]).includes(c))
-      .sort((a, b) => a.localeCompare(b))
-    const ordered = [...defaultsPresent, ...customs]
-    if (byCat.has('其他')) ordered.push('其他')
-    return ordered.map((cat) => ({ cat, items: byCat.get(cat) ?? [] }))
-  }, [viewed])
 
-  // 新增時的分類建議：預設分類 ∪ 本人已用過的分類
-  const categorySuggestions = useMemo(() => {
-    const s = new Set<string>(PACK_CATEGORIES)
-    for (const p of list) {
-      if (p.owner_user_id === meId && p.category?.trim()) s.add(p.category.trim())
+  // 分組：依被檢視者的分類順序排組，未分類（category_id 為 null 或分類已刪）殿後；空組不顯示
+  const groups = useMemo(() => {
+    const viewedCats = catsByOwner[viewedUserId] ?? []
+    const byCat = new Map<string | null, PackingItem[]>()
+    for (const p of viewed) {
+      const key = p.category_id ?? null
+      const arr = byCat.get(key) ?? []
+      arr.push(p)
+      byCat.set(key, arr)
     }
-    return [...s]
-  }, [list, meId])
+    const out: { key: string; name: string; items: PackingItem[] }[] = []
+    const known = new Set<string>()
+    for (const c of viewedCats) {
+      known.add(c.id)
+      const items = byCat.get(c.id)
+      if (items && items.length) out.push({ key: c.id, name: c.name, items })
+    }
+    const orphan: PackingItem[] = []
+    for (const [k, arr] of byCat) {
+      if (k === null || !known.has(k)) orphan.push(...arr)
+    }
+    if (orphan.length) out.push({ key: '__none__', name: '未分類', items: orphan })
+    return out
+  }, [viewed, catsByOwner, viewedUserId])
 
   const total = viewed.length
   const done = viewed.filter((p) => p.is_packed).length
@@ -126,12 +149,12 @@ export default function PackingTab() {
     }
   }
 
-  async function handleAdd(name: string, category: string) {
+  async function handleAdd(name: string, categoryId: string | null) {
     const created = await addPackingItem({
       trip_id: tripId,
       owner_user_id: meId,
       name,
-      category,
+      category_id: categoryId,
     })
     setList((ls) => [...ls, created])
   }
@@ -141,7 +164,7 @@ export default function PackingTab() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col lg:relative lg:mx-auto lg:w-full lg:max-w-[720px]">
       {/* appbar：標題 + 兩人頭像 */}
       <div className="flex flex-none items-center justify-between px-4 pb-[10px] pt-3">
         <h1 className="text-[26px] font-bold tracking-[-0.02em]">行李清單</h1>
@@ -251,9 +274,9 @@ export default function PackingTab() {
           </div>
         ) : (
           groups.map((g) => (
-            <div key={g.cat} className="mb-[18px]">
+            <div key={g.key} className="mb-[18px]">
               <div className="mx-1 mb-[9px] mt-1 font-round text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
-                {g.cat}
+                {g.name}
               </div>
               <div className="rounded-lg bg-surface px-[14px] py-1 shadow-1">
                 {g.items.map((item, idx) => (
@@ -325,7 +348,7 @@ export default function PackingTab() {
 
       {addOpen && (
         <AddPackSheet
-          suggestions={categorySuggestions}
+          categories={catsByOwner[meId] ?? []}
           onAdd={handleAdd}
           onClose={() => setAddOpen(false)}
         />

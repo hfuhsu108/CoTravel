@@ -16,6 +16,7 @@ import { errMessage } from '../../lib/errMessage'
 import Sheet from '../ui/Sheet'
 import Field, { inputClassName } from '../ui/Field'
 import Button from '../ui/Button'
+import Time24Field from '../ui/Time24Field'
 import Icon from '../Icon'
 import PlaceSearch, { type PickedPlace } from '../map/PlaceSearch'
 
@@ -68,8 +69,15 @@ export default function FlightFormSheet({
         }
       : null,
   )
-  const [departLocal, setDepartLocal] = useState(t?.depart_local?.slice(0, 16) ?? '')
-  const [arriveLocal, setArriveLocal] = useState(t?.arrive_local?.slice(0, 16) ?? '')
+  // 拆成日期（原生 picker，無 12h 問題）＋ 自製 24h 時間欄；下游沿用組回的 departLocal/arriveLocal
+  const initDepart = t?.depart_local?.slice(0, 16) ?? ''
+  const initArrive = t?.arrive_local?.slice(0, 16) ?? ''
+  const [departDate, setDepartDate] = useState(initDepart.slice(0, 10))
+  const [departTime, setDepartTime] = useState(initDepart.slice(11, 16))
+  const [arriveDate, setArriveDate] = useState(initArrive.slice(0, 10))
+  const [arriveTime, setArriveTime] = useState(initArrive.slice(11, 16))
+  const departLocal = departDate && departTime ? `${departDate}T${departTime}` : ''
+  const arriveLocal = arriveDate && arriveTime ? `${arriveDate}T${arriveTime}` : ''
   const [departTerminal, setDepartTerminal] = useState(t?.depart_terminal ?? '')
   const [arriveTerminal, setArriveTerminal] = useState(t?.arrive_terminal ?? '')
   const [notes, setNotes] = useState(t?.notes ?? '')
@@ -131,6 +139,7 @@ export default function FlightFormSheet({
           lat: depAirport.lat,
           lng: depAirport.lng,
           google_place_id: depAirport.google_place_id,
+          photo_url: depAirport.photo_url, // 自動帶機場照片（搜尋時已抓）
           departure_time: departLocal.slice(11, 16), // 起飛＝離開時間
         })
         const arrItem = await addItem({
@@ -142,6 +151,7 @@ export default function FlightFormSheet({
           lat: arrAirport.lat,
           lng: arrAirport.lng,
           google_place_id: arrAirport.google_place_id,
+          photo_url: arrAirport.photo_url, // 自動帶機場照片
           scheduled_time: arriveLocal.slice(11, 16),
         })
         fromId = depItem.id
@@ -263,10 +273,18 @@ export default function FlightFormSheet({
               <div className="flex-1">
                 <Field label="出發時間（當地）">
                   <input
-                    type="datetime-local"
-                    value={departLocal}
-                    onChange={(e) => setDepartLocal(e.target.value)}
+                    type="date"
+                    value={departDate}
+                    onChange={(e) => setDepartDate(e.target.value)}
                     className={`${inputClassName} num`}
+                    aria-label="出發日期"
+                  />
+                  <Time24Field
+                    value={departTime}
+                    onChange={setDepartTime}
+                    onCommit={setDepartTime}
+                    className={`${inputClassName} num mt-2 text-center`}
+                    ariaLabel="出發時間"
                   />
                   {departTz && (
                     <p className="mt-1 text-[11.5px] text-ink-3">{tzLabel(departTz, departLocal || undefined)}</p>
@@ -276,10 +294,18 @@ export default function FlightFormSheet({
               <div className="flex-1">
                 <Field label="抵達時間（當地）">
                   <input
-                    type="datetime-local"
-                    value={arriveLocal}
-                    onChange={(e) => setArriveLocal(e.target.value)}
+                    type="date"
+                    value={arriveDate}
+                    onChange={(e) => setArriveDate(e.target.value)}
                     className={`${inputClassName} num`}
+                    aria-label="抵達日期"
+                  />
+                  <Time24Field
+                    value={arriveTime}
+                    onChange={setArriveTime}
+                    onCommit={setArriveTime}
+                    className={`${inputClassName} num mt-2 text-center`}
+                    ariaLabel="抵達時間"
                   />
                   {arriveTz && (
                     <p className="mt-1 text-[11.5px] text-ink-3">{tzLabel(arriveTz, arriveLocal || undefined)}</p>
