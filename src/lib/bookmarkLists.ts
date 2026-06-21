@@ -20,6 +20,14 @@ export const LIST_ICONS: IconName[] = [
   'walk',
   'train',
   'car',
+  // 旅遊主題擴充：美食 / 自然 / 購物娛樂
+  'food',
+  'coffee',
+  'mountain',
+  'beach',
+  'onsen',
+  'mall',
+  'ferris',
 ]
 export const LIST_COLORS = [
   '#f08fb0',

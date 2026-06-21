@@ -250,7 +250,7 @@ function PinMarker({ n, selected, dim }: { n: number; selected: boolean; dim: bo
   )
 }
 
-// 書籤水滴 marker：套清單顏色為底、清單 icon 為白色（同一外型，顏色/圖示由所屬清單決定）
+// 書籤水滴 marker：套清單顏色為底、清單 icon 為白色描邊（線稿）——填滿會讓線條型圖示（摩天輪、溫泉…）糊成一塊
 function ListMarker({ icon, color, dim }: { icon: IconName; color: string; dim: boolean }) {
   return (
     <div style={{ opacity: dim ? 0.45 : 1, transition: 'opacity .2s' }}>
@@ -269,7 +269,7 @@ function ListMarker({ icon, color, dim }: { icon: IconName; color: string; dim: 
         }}
       >
         <span style={{ transform: 'rotate(-45deg)', color: '#fff', display: 'flex' }}>
-          <Icon name={icon} size={13} fill />
+          <Icon name={icon} size={14} sw={2.1} />
         </span>
       </div>
     </div>

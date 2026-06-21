@@ -11,6 +11,7 @@ import Field, { inputClassName } from '../../ui/Field'
 import Button from '../../ui/Button'
 import LinkedDocs from '../../docs/LinkedDocs'
 import DocLinkSheet from '../../docs/DocLinkSheet'
+import FlightSchedule from '../../docs/FlightSchedule'
 import MiniRouteMap from '../MiniRouteMap'
 import RoutePreviewMap from '../RoutePreviewMap'
 import { DetailHead } from './parts'
@@ -282,9 +283,11 @@ export default function TransitDetail({
               </span>
             }
           />
-          <div className="mb-4 rounded-lg bg-surface-2 p-4 text-[13.5px] leading-[1.6] text-ink-3">
-            這是航班段。航班時間、時差、飛行時數與機票，請到「文件 → 機票」分頁的航班卡查看或編輯。
+          {/* 航班時刻（唯讀）：起飛/抵達當地時間、時區、飛行時數、時差。與機票卡共用 FlightSchedule */}
+          <div className="mb-3 rounded-lg bg-surface-2 p-4 shadow-1">
+            <FlightSchedule transport={transport} fromName={fromItem.name} toName={toItem.name} />
           </div>
+          <p className="mb-4 text-center text-[12px] text-ink-3">時間・機票的編輯請至「文件 → 機票」分頁</p>
           <LinkedDocs docs={linkedDocs} onManage={() => setManageOpen(true)} />
           {transport && (
             <button

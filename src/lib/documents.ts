@@ -45,6 +45,17 @@ export async function listDocumentsByTransport(transportId: string): Promise<Doc
   return flattenLinkedDocs(data)
 }
 
+// 某住宿已連結的文件（多對多，走 document_lodgings join）。住宿項目以 lodging_id 動態查詢此表，
+// 故後續新增並連到該住宿的文件，已排好的住宿日會自動看到（連結掛 lodging 層、不隨住宿項目重建消失）。
+export async function listDocumentsByLodging(lodgingId: string): Promise<Document[]> {
+  const { data, error } = await supabase
+    .from('document_lodgings')
+    .select('documents(*)')
+    .eq('lodging_id', lodgingId)
+  if (error) throw error
+  return flattenLinkedDocs(data)
+}
+
 // ---- 連結增刪（多對多；toggle 管理用） ----
 
 export async function linkDocumentToItem(documentId: string, itemId: string): Promise<void> {
@@ -88,17 +99,41 @@ export async function unlinkDocumentFromTransport(
   if (error) throw error
 }
 
+export async function linkDocumentToLodging(documentId: string, lodgingId: string): Promise<void> {
+  const { error } = await supabase
+    .from('document_lodgings')
+    .upsert(
+      { document_id: documentId, lodging_id: lodgingId },
+      { onConflict: 'document_id,lodging_id' },
+    )
+  if (error) throw error
+}
+
+export async function unlinkDocumentFromLodging(
+  documentId: string,
+  lodgingId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('document_lodgings')
+    .delete()
+    .eq('document_id', documentId)
+    .eq('lodging_id', lodgingId)
+  if (error) throw error
+}
+
 // 文件匣 chip 用：每份文件目前連到幾處（items + transports 合計）
 export async function listLinkCounts(documentIds: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>()
   if (documentIds.length === 0) return counts
-  const [items, transports] = await Promise.all([
+  const [items, transports, lodgings] = await Promise.all([
     supabase.from('document_items').select('document_id').in('document_id', documentIds),
     supabase.from('document_transports').select('document_id').in('document_id', documentIds),
+    supabase.from('document_lodgings').select('document_id').in('document_id', documentIds),
   ])
   if (items.error) throw items.error
   if (transports.error) throw transports.error
-  for (const row of [...(items.data ?? []), ...(transports.data ?? [])]) {
+  if (lodgings.error) throw lodgings.error
+  for (const row of [...(items.data ?? []), ...(transports.data ?? []), ...(lodgings.data ?? [])]) {
     const id = (row as { document_id: string }).document_id
     counts.set(id, (counts.get(id) ?? 0) + 1)
   }
@@ -193,6 +228,25 @@ export async function updateNote(
   const update: Record<string, string> = {}
   if (patch.title !== undefined) update.file_name = patch.title
   if (patch.content !== undefined) update.content = patch.content
+  const { data, error } = await supabase
+    .from('documents')
+    .update(update)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Document
+}
+
+// 更新文件中繼資料（改顯示名稱 / 改分類）。file_name 為顯示名、與 storage key（uuid）分離，
+// 故改名只動 DB、不搬 storage 物件；改分類只是換 documents.category。檔案與備忘錄皆適用。
+export async function updateDocument(
+  id: string,
+  patch: { file_name?: string; category?: DocumentCategory },
+): Promise<Document> {
+  const update: Record<string, string> = {}
+  if (patch.file_name !== undefined) update.file_name = patch.file_name
+  if (patch.category !== undefined) update.category = patch.category
   const { data, error } = await supabase
     .from('documents')
     .update(update)

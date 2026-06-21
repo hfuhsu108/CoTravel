@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { Document } from '../../lib/types'
 import type { FlightView } from '../../lib/transports'
-import { formatDurationZh, spanMinutes, tzOffsetLabel, tzOffsetDiffLabel } from '../../lib/time'
 import { isDateOutsideTrip } from '../../lib/scheduleWarnings'
 import { errMessage } from '../../lib/errMessage'
 import Icon from '../Icon'
+import FlightSchedule from './FlightSchedule'
 
 interface FlightCardProps {
   flight: FlightView
@@ -16,16 +16,8 @@ interface FlightCardProps {
   onViewTicket: () => void
 }
 
-// 'YYYY-MM-DDTHH:MM[:SS]' → 'M/D HH:MM'
-function fmtLocal(s: string | null): string {
-  if (!s) return '—'
-  const date = s.slice(0, 10).split('-')
-  const time = s.slice(11, 16)
-  if (date.length < 3) return time || '—'
-  return `${Number(date[1])}/${Number(date[2])} ${time}`
-}
-
 // 航班摘要卡（功能 5）：航班編號、起訖機場與當地時間+時區、飛行時數、時差、機票檔、編輯/刪除。
+// 時刻呈現抽到 FlightSchedule（與行程的航班段共用）。
 export default function FlightCard({
   flight,
   ticket,
@@ -41,16 +33,6 @@ export default function FlightCard({
   const dateOutside =
     isDateOutsideTrip(t.depart_local?.slice(0, 10) ?? null, tripStart, tripEnd) ||
     isDateOutsideTrip(t.arrive_local?.slice(0, 10) ?? null, tripStart, tripEnd)
-
-  const durationMin =
-    t.duration_min ??
-    (t.depart_local && t.depart_tz && t.arrive_local && t.arrive_tz
-      ? spanMinutes(t.depart_local, t.depart_tz, t.arrive_local, t.arrive_tz)
-      : null)
-  const diff =
-    t.depart_tz && t.arrive_tz
-      ? tzOffsetDiffLabel(t.depart_tz, t.arrive_tz, t.depart_local ?? undefined)
-      : null
 
   async function handleDelete() {
     if (!window.confirm(`確定刪除航班${t.flight_no ? ` ${t.flight_no}` : ''}？（起訖機場地點會保留）`)) return
@@ -93,37 +75,11 @@ export default function FlightCard({
         </div>
       </div>
 
-      {/* 起訖：機場名 + 當地時間 + 時區 */}
-      <div className="flex items-stretch gap-2">
-        <FlightEnd
-          airport={fromItem?.name ?? '出發'}
-          terminal={t.depart_terminal}
-          local={fmtLocal(t.depart_local)}
-          tz={t.depart_tz}
-          align="left"
-        />
-        <div className="flex flex-col items-center justify-center px-1">
-          <Icon name="plane" size={18} className="text-primary" />
-          {durationMin != null && (
-            <span className="num mt-1 whitespace-nowrap text-[11px] font-bold text-ink-3">
-              {formatDurationZh(durationMin)}
-            </span>
-          )}
-        </div>
-        <FlightEnd
-          airport={toItem?.name ?? '抵達'}
-          terminal={t.arrive_terminal}
-          local={fmtLocal(t.arrive_local)}
-          tz={t.arrive_tz}
-          align="right"
-        />
-      </div>
-
-      {diff && (
-        <div className="mt-2 text-center text-[12px] font-semibold text-ink-3">
-          兩地時差 <span className="num">{diff}</span>
-        </div>
-      )}
+      <FlightSchedule
+        transport={t}
+        fromName={fromItem?.name ?? '出發'}
+        toName={toItem?.name ?? '抵達'}
+      />
 
       {dateOutside && (
         <div className="mt-2 rounded-md bg-warn-soft px-3 py-2 text-[12.5px] font-semibold text-[#b9762a]">
@@ -150,29 +106,6 @@ export default function FlightCard({
       {error && (
         <div className="mt-2 rounded-md bg-warn-soft px-3 py-2 text-[12.5px] text-[#b9762a]">{error}</div>
       )}
-    </div>
-  )
-}
-
-function FlightEnd({
-  airport,
-  terminal,
-  local,
-  tz,
-  align,
-}: {
-  airport: string
-  terminal: string | null
-  local: string
-  tz: string | null
-  align: 'left' | 'right'
-}) {
-  return (
-    <div className={`min-w-0 flex-1 ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <div className="truncate text-[14px] font-extrabold leading-tight">{airport}</div>
-      {terminal && <div className="truncate text-[11.5px] font-semibold text-ink-3">{terminal}</div>}
-      <div className="num mt-[3px] text-[15px] font-bold text-primary-deep">{local}</div>
-      {tz && <div className="num text-[11px] font-semibold text-ink-3">{tzOffsetLabel(tz, undefined)}</div>}
     </div>
   )
 }

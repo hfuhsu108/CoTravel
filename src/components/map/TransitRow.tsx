@@ -35,6 +35,12 @@ export default function TransitRow({ transport, latestDeparture, onClick }: Tran
             <Icon name={modeIcon(transport.mode)} size={18} />
           </span>
           <span className="text-[13px] font-semibold text-ink-2">{transportLabel(transport)}</span>
+          {/* 航班：收合列直接顯示起飛時間，不必展開（功能 6） */}
+          {transport.mode === 'flight' && transport.depart_local && (
+            <span className="num text-[13px] font-bold text-primary-deep">
+              · 起飛 {transport.depart_local.slice(11, 16)}
+            </span>
+          )}
           {time && <span className="num text-[13px] font-bold text-ink-2">· {time}</span>}
           {transport.cost_text && (
             <span className="num text-[12.5px] font-bold text-ink-3">· {transport.cost_text}</span>

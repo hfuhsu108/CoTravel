@@ -733,3 +733,33 @@ end $$;
 
 -- 8d. 住宿照片：飯店搜尋時抓到的照片，同步到行程地標（機場/飯店地標不再沒縮圖）。冪等。
 alter table lodgings add column if not exists photo_url text;
+
+-- ----------------------------------------------------------------
+-- 8e. 文件 ↔ 住宿 的多對多連結（document_lodgings）。
+--     住宿改入住/退房日會刪除重建住宿項目（items），連結若掛在 item 會被 cascade 清掉；
+--     故掛在 lodging 層。行程的住宿項目改以 lodging_id 動態查此表，
+--     後續新增並連到該住宿的文件會自動出現在已排好的住宿日（使用者需求）。
+--     置於檔尾：lodgings 與 documents 此時皆已建立。全段冪等可重跑。
+-- ----------------------------------------------------------------
+create table if not exists document_lodgings (
+  document_id uuid references documents(id) on delete cascade,
+  lodging_id  uuid references lodgings(id)  on delete cascade,
+  created_at  timestamptz default now(),
+  primary key (document_id, lodging_id)
+);
+alter table document_lodgings enable row level security;
+
+-- RLS 比照 document_items：經 documents.trip_id 與 lodgings.trip_id 雙重驗證成員（防跨趟連結）
+drop policy if exists "members rw document_lodgings" on document_lodgings;
+create policy "members rw document_lodgings" on document_lodgings
+  for all using (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+  ) with check (
+    exists (select 1 from documents d where d.id = document_id and is_trip_member(d.trip_id))
+    and exists (select 1 from lodgings l where l.id = lodging_id and is_trip_member(l.trip_id))
+  );
+
+-- 既有資料自我修復：把舊的單一訂房單欄位 lodgings.doc_id 帶進多對多表（doc_id 仍保留為主訂房單）
+insert into document_lodgings (document_id, lodging_id)
+  select doc_id, id from lodgings where doc_id is not null
+  on conflict do nothing;

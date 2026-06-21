@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import type { AreaCandidate, Day, Document, Item, TripMemberWithProfile } from '../../../lib/types'
 import { displayName, type ItemPatch } from '../../../lib/itinerary'
 import type { EffTime } from '../../../lib/schedule'
-import { listDocumentsByItem } from '../../../lib/documents'
+import { listDocumentsByItem, listDocumentsByLodging } from '../../../lib/documents'
 import Icon from '../../Icon'
 import Avatar from '../../Avatar'
 import DocLinkSheet from '../../docs/DocLinkSheet'
@@ -59,10 +59,16 @@ export default function DetailSheet({
   const [linkedDocs, setLinkedDocs] = useState<Document[]>([])
   const [manageOpen, setManageOpen] = useState(false)
 
+  // 住宿項目（lodging_id 非 null）的文件掛在「住宿」層級：所有住宿日共用、後續新增的文件自動出現，
+  // 且改入住/退房日重建項目時不流失。其餘項目維持 item 層級連結。
+  const lodgingId = item.lodging_id
+
   // 手動重抓（管理連結變動後呼叫）；元件仍掛載故不需 active 守衛
   async function refreshLinked() {
     try {
-      setLinkedDocs(await listDocumentsByItem(item.id))
+      setLinkedDocs(
+        await (lodgingId ? listDocumentsByLodging(lodgingId) : listDocumentsByItem(item.id)),
+      )
     } catch (e) {
       console.warn('[DetailSheet] 連結文件載入失敗', e)
     }
@@ -72,7 +78,9 @@ export default function DetailSheet({
     let active = true
     ;(async () => {
       try {
-        const docs = await listDocumentsByItem(item.id)
+        const docs = await (lodgingId
+          ? listDocumentsByLodging(lodgingId)
+          : listDocumentsByItem(item.id))
         if (active) setLinkedDocs(docs)
       } catch (e) {
         console.warn('[DetailSheet] 連結文件載入失敗', e)
@@ -81,7 +89,7 @@ export default function DetailSheet({
     return () => {
       active = false
     }
-  }, [item.id])
+  }, [item.id, lodgingId])
 
   return (
     <div className="absolute inset-0 z-[72] flex flex-col bg-bg animate-slideleft">
@@ -163,8 +171,8 @@ export default function DetailSheet({
       {manageOpen && (
         <DocLinkSheet
           tripId={tripId}
-          targetKind="item"
-          targetId={item.id}
+          targetKind={lodgingId ? 'lodging' : 'item'}
+          targetId={lodgingId ?? item.id}
           onChanged={refreshLinked}
           onClose={() => setManageOpen(false)}
         />

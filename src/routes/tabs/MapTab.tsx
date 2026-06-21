@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   pointerWithin,
   useSensor,
@@ -117,7 +118,11 @@ export default function MapTab() {
   // 功能 2：加入書籤前的暫存地點（先選清單再 addItem，像 Google 地圖）
   const [pendingBookmark, setPendingBookmark] = useState<PickedPlace | null>(null)
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  // 滑鼠：小位移即拖；觸控：須長按 0.2 秒（期間位移 <8px）才進入拖曳，避免手機輕滑列表誤觸發排序
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
   useEffect(() => {
     let active = true

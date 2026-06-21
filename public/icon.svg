@@ -1,0 +1,24 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- App 圖示來源：對應 Logo.tsx 的品牌意象（薰衣草漸層方塊 + 白色定位 pin + 右下粉色 heart 圓＝兩人）。
+       純向量、免字型依賴；全 bleed 方形供 maskable 裁切，主元素置於中央安全區。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7a6cf0"/>
+      <stop offset="1" stop-color="#b6aef7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- 定位 pin（沿用 Icon 的 pin 路徑，填白）。translate/scale 把 24×24 放大置中於上半安全區。 -->
+  <g transform="translate(112,34) scale(12)" fill="#fff">
+    <path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z"/>
+  </g>
+
+  <!-- 右下粉色小圓 + 白色 heart＝夥伴。位置拉進中央，落在 maskable 安全圈內。 -->
+  <circle cx="346" cy="324" r="74" fill="#efeafe"/>
+  <circle cx="346" cy="324" r="64" fill="#f08fb0"/>
+  <g transform="translate(346,322) scale(1.05)" fill="#fff">
+    <path d="M0,-14 C 8,-26 28,-24 28,-6 C 28,8 8,18 0,26 C -8,18 -28,8 -28,-6 C -28,-24 -8,-26 0,-14 Z"/>
+  </g>
+</svg>

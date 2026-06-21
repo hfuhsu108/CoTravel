@@ -33,7 +33,13 @@ export default defineConfig(({ command }) => {
           display: 'standalone',
           scope: base,
           start_url: base,
+          // icons 由 scripts/gen-icons.mjs 從 public/icon.svg 產生（換圖重跑 npm run gen:icons）
           icons: [
+            {
+              src: 'pwa-64x64.png',
+              sizes: '64x64',
+              type: 'image/png',
+            },
             {
               src: 'pwa-192x192.png',
               sizes: '192x192',
@@ -45,7 +51,8 @@ export default defineConfig(({ command }) => {
               type: 'image/png',
             },
             {
-              src: 'pwa-512x512.png',
+              // 獨立的 maskable 圖（Android 自適應圖示用），修正先前誤指非 maskable 512 的問題
+              src: 'maskable-icon-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

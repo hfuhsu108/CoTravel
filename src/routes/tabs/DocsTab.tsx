@@ -7,6 +7,7 @@ import {
   listDocumentsByTransport,
   listLinkCounts,
   removeDocument,
+  updateDocument,
 } from '../../lib/documents'
 import { listFlights, removeTransport, type FlightView } from '../../lib/transports'
 import { listLodgings, removeLodging } from '../../lib/lodgings'
@@ -230,6 +231,15 @@ export default function DocsTab() {
     }
   }
 
+  // 從住宿卡管理連結後，刷新文件清單的「已連結 N 處」（連結數含 lodging）
+  const refreshLinkCounts = useCallback(async () => {
+    try {
+      setLinkCounts(await listLinkCounts(documents.map((d) => d.id)))
+    } catch (e) {
+      console.warn('[docs] 連結數刷新失敗', e)
+    }
+  }, [documents])
+
   const byTab = useMemo(() => documents.filter((d) => d.category === tab), [documents, tab])
   // 離線：已快取的檔案與所有備忘錄（內文隨列載入）在前、未快取檔案灰階在後；線上：全部正常顯示
   const isViewable = (d: Document) => d.kind === 'note' || cachedPaths.has(d.storage_path ?? '')
@@ -278,6 +288,17 @@ export default function DocsTab() {
         return copy
       })
     }
+  }
+
+  // 改名/改分類：只動 DB 中繼資料；改分類後自動切到對應分頁，並讓開著的操作頁同步新值。
+  async function handleSaveMeta(
+    doc: Document,
+    patch: { file_name?: string; category?: DocumentCategory },
+  ) {
+    const updated = await updateDocument(doc.id, patch)
+    setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+    setActionDoc(updated)
+    if (patch.category) setTab(updated.category)
   }
 
   async function handleDelete(doc: Document) {
@@ -441,8 +462,8 @@ export default function DocsTab() {
                 {lodgings.map((l) => (
                   <LodgingCard
                     key={l.id}
+                    tripId={tripId}
                     lodging={l}
-                    ticket={l.doc_id ? (documents.find((d) => d.id === l.doc_id) ?? null) : null}
                     tripStart={tripStart}
                     tripEnd={tripEnd}
                     onEdit={() => {
@@ -450,10 +471,7 @@ export default function DocsTab() {
                       setLodgingFormOpen(true)
                     }}
                     onDelete={() => handleDeleteLodging(l)}
-                    onViewTicket={() => {
-                      const tk = l.doc_id ? documents.find((d) => d.id === l.doc_id) : null
-                      if (tk) handleViewTicket(tk)
-                    }}
+                    onLinksChanged={refreshLinkCounts}
                   />
                 ))}
               </div>
@@ -566,6 +584,7 @@ export default function DocsTab() {
           canView={online || cachedPaths.has(actionDoc.storage_path ?? '')}
           linkedCount={linkCounts.get(actionDoc.id) ?? 0}
           onToggleCache={(next) => handleToggleCache(actionDoc, next)}
+          onSaveMeta={(patch) => handleSaveMeta(actionDoc, patch)}
           onDelete={() => handleDelete(actionDoc)}
           onClose={() => setActionDoc(null)}
         />

@@ -1,17 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Document, Lodging } from '../../lib/types'
+import { listDocumentsByLodging } from '../../lib/documents'
 import { isDateOutsideTrip } from '../../lib/scheduleWarnings'
 import { errMessage } from '../../lib/errMessage'
 import Icon from '../Icon'
+import LinkedDocs from './LinkedDocs'
+import DocLinkSheet from './DocLinkSheet'
 
 interface LodgingCardProps {
+  tripId: string
   lodging: Lodging
-  ticket: Document | null // 訂房單（lodging.doc_id 對應的文件）
   tripStart: string | null // 旅程起訖（日期防呆）
   tripEnd: string | null
   onEdit: () => void
   onDelete: () => Promise<void>
-  onViewTicket: () => void
+  onLinksChanged?: () => void // 連結變動後通知父層刷新文件連結數
 }
 
 // 'YYYY-MM-DD' → 'M/D'
@@ -27,22 +30,49 @@ function nights(ci: string, co: string): number {
   return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-// 住宿摘要卡（比照航班卡）：飯店名、入住→退房、晚數、備註、訂房單、編輯/刪除。
+// 住宿摘要卡（比照航班卡）：飯店名、入住→退房、晚數、備註、連結文件（可多份、與行程住宿項目共用）、編輯/刪除。
 export default function LodgingCard({
+  tripId,
   lodging,
-  ticket,
   tripStart,
   tripEnd,
   onEdit,
   onDelete,
-  onViewTicket,
+  onLinksChanged,
 }: LodgingCardProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [linkedDocs, setLinkedDocs] = useState<Document[]>([])
+  const [manageOpen, setManageOpen] = useState(false)
   const n = nights(lodging.check_in, lodging.check_out)
   const dateOutside =
     isDateOutsideTrip(lodging.check_in, tripStart, tripEnd) ||
     isDateOutsideTrip(lodging.check_out, tripStart, tripEnd)
+
+  // 連結文件變動（管理後）重抓，並通知父層刷新文件清單的連結數
+  async function refreshLinked() {
+    try {
+      setLinkedDocs(await listDocumentsByLodging(lodging.id))
+      onLinksChanged?.()
+    } catch (e) {
+      console.warn('[LodgingCard] 連結文件載入失敗', e)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const docs = await listDocumentsByLodging(lodging.id)
+        if (active) setLinkedDocs(docs)
+      } catch (e) {
+        console.warn('[LodgingCard] 連結文件載入失敗', e)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [lodging.id])
 
   async function handleDelete() {
     if (
@@ -110,18 +140,21 @@ export default function LodgingCard({
         </div>
       )}
 
-      {ticket && (
-        <button
-          type="button"
-          onClick={onViewTicket}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-primary-soft py-[11px] text-[13.5px] font-bold text-primary-deep active:scale-[0.99]"
-        >
-          <Icon name="doc" size={16} /> 查看訂房單
-        </button>
-      )}
+      {/* 連結文件（訂房單等，可多份）；行程的住宿項目以 lodging 動態共用同一份清單 */}
+      <LinkedDocs docs={linkedDocs} onManage={() => setManageOpen(true)} />
 
       {error && (
         <div className="mt-2 rounded-md bg-warn-soft px-3 py-2 text-[12.5px] text-[#b9762a]">{error}</div>
+      )}
+
+      {manageOpen && (
+        <DocLinkSheet
+          tripId={tripId}
+          targetKind="lodging"
+          targetId={lodging.id}
+          onChanged={refreshLinked}
+          onClose={() => setManageOpen(false)}
+        />
       )}
     </div>
   )

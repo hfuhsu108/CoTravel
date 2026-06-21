@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import { createLodging, updateLodging } from '../../lib/lodgings'
-import { uploadDocument } from '../../lib/documents'
+import { uploadDocument, linkDocumentToLodging } from '../../lib/documents'
 import { logActivity } from '../../lib/activity'
 import { env } from '../../lib/env'
 import { errMessage } from '../../lib/errMessage'
@@ -72,37 +72,42 @@ export default function LodgingFormSheet({
     setBusy(true)
     setError(null)
     try {
-      // 有附訂房單 → 先上傳，拿到 doc_id
+      // 有附訂房單 → 先上傳，拿到 doc_id（doc_id 仍存為「主訂房單」）
       let doc_id: string | null = lodging?.doc_id ?? null
+      let uploadedDocId: string | null = null
       if (bookingFile) {
         const doc = await uploadDocument({ trip_id: tripId, category: 'lodging', file: bookingFile })
         doc_id = doc.id
+        uploadedDocId = doc.id
       }
-      if (isEdit && lodging) {
-        await updateLodging(lodging.id, {
-          name: place.name,
-          lat: place.lat,
-          lng: place.lng,
-          google_place_id: place.google_place_id,
-          photo_url: place.photo_url,
-          check_in: checkIn,
-          check_out: checkOut,
-          notes: notes.trim() || null,
-          doc_id,
-        })
-      } else {
-        await createLodging({
-          trip_id: tripId,
-          name: place.name,
-          lat: place.lat,
-          lng: place.lng,
-          google_place_id: place.google_place_id,
-          photo_url: place.photo_url,
-          check_in: checkIn,
-          check_out: checkOut,
-          notes: notes.trim() || null,
-          doc_id,
-        })
+      const saved =
+        isEdit && lodging
+          ? await updateLodging(lodging.id, {
+              name: place.name,
+              lat: place.lat,
+              lng: place.lng,
+              google_place_id: place.google_place_id,
+              photo_url: place.photo_url,
+              check_in: checkIn,
+              check_out: checkOut,
+              notes: notes.trim() || null,
+              doc_id,
+            })
+          : await createLodging({
+              trip_id: tripId,
+              name: place.name,
+              lat: place.lat,
+              lng: place.lng,
+              google_place_id: place.google_place_id,
+              photo_url: place.photo_url,
+              check_in: checkIn,
+              check_out: checkOut,
+              notes: notes.trim() || null,
+              doc_id,
+            })
+      // 新上傳的訂房單一併連到此住宿（多對多），行程的住宿項目即可動態看到
+      if (uploadedDocId) {
+        await linkDocumentToLodging(uploadedDocId, saved.id)
       }
       logActivity(
         tripId,

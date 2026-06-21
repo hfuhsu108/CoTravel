@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import type { Document } from '../../lib/types'
 import {
   linkDocumentToItem,
+  linkDocumentToLodging,
   linkDocumentToTransport,
   listDocuments,
   listDocumentsByItem,
+  listDocumentsByLodging,
   listDocumentsByTransport,
   unlinkDocumentFromItem,
+  unlinkDocumentFromLodging,
   unlinkDocumentFromTransport,
 } from '../../lib/documents'
 import { errMessage } from '../../lib/errMessage'
@@ -17,10 +20,17 @@ import { categoryIcon, categoryLabel } from './docMeta'
 
 interface DocLinkSheetProps {
   tripId: string
-  targetKind: 'item' | 'transport'
+  targetKind: 'item' | 'transport' | 'lodging'
   targetId: string
   onChanged: () => void // 連結變動後通知父層重抓已連結清單
   onClose: () => void
+}
+
+// 依連結對象抓「已連結文件」（item / transport / lodging 三種多對多表）
+function listLinkedByKind(kind: DocLinkSheetProps['targetKind'], targetId: string) {
+  if (kind === 'item') return listDocumentsByItem(targetId)
+  if (kind === 'transport') return listDocumentsByTransport(targetId)
+  return listDocumentsByLodging(targetId)
 }
 
 // 連結管理多選器（toggle list）：列出該趟全部文件，逐份開關是否連到此項目/交通。
@@ -45,10 +55,7 @@ export default function DocLinkSheet({
       setError(null)
       try {
         const all = await listDocuments(tripId)
-        const linked =
-          targetKind === 'item'
-            ? await listDocumentsByItem(targetId)
-            : await listDocumentsByTransport(targetId)
+        const linked = await listLinkedByKind(targetKind, targetId)
         if (!active) return
         setDocs(all)
         setLinkedIds(new Set(linked.map((d) => d.id)))
@@ -79,9 +86,12 @@ export default function DocLinkSheet({
       if (targetKind === 'item') {
         if (wasLinked) await unlinkDocumentFromItem(docId, targetId)
         else await linkDocumentToItem(docId, targetId)
-      } else {
+      } else if (targetKind === 'transport') {
         if (wasLinked) await unlinkDocumentFromTransport(docId, targetId)
         else await linkDocumentToTransport(docId, targetId)
+      } else {
+        if (wasLinked) await unlinkDocumentFromLodging(docId, targetId)
+        else await linkDocumentToLodging(docId, targetId)
       }
       onChanged()
     } catch (e) {
