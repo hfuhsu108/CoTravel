@@ -1,0 +1,55 @@
+# 自動 build 並發布到 GitHub Pages（階段 7）。
+# 需在 repo → Settings → Secrets and variables → Actions 設定下列 secrets，
+# build 時注入前端（GitHub Pages 為純靜態，Vite 會把 VITE_* 編進 bundle）：
+#   VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY、VITE_GOOGLE_MAPS_API_KEY（必填）
+#   VITE_GOOGLE_MAPS_MAP_ID（選填；未設則程式 fallback 為 DEMO_MAP_ID）
+# anon key 與 Maps 金鑰本來就會出現在前端，安全靠 Supabase RLS 與 Maps referrer 限制（見 docs/06）。
+# 另需 Settings → Pages → Source 選「GitHub Actions」。
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, master] # 本機目前在 master，GitHub 預設分支可能為任一，兩者皆涵蓋
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時只跑一個發布；不取消進行中的（避免半套部署）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_GOOGLE_MAPS_MAP_ID: ${{ secrets.VITE_GOOGLE_MAPS_MAP_ID }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Document, Item, TransitStep, Transport, TransportMode } from '../../../lib/types'
 import { fetchDirectionsRoutes, type DirectionsMode, type RouteOption } from '../../../lib/directions'
+import { uberRideUrl, grabUrl, openExternal } from '../../../lib/deeplinks'
 import { listDocumentsByTransport } from '../../../lib/documents'
 import { errMessage } from '../../../lib/errMessage'
 import Icon from '../../Icon'
@@ -480,6 +481,30 @@ export default function TransitDetail({
               <Icon name="nav" size={17} /> 開啟路線導航
             </Button>
           )}
+
+          {/* 叫車 deep link（功能 13）：帶目的地座標跳轉外部平台（無下單 API） */}
+          {toCoord && (
+            <div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-ink-3">叫車</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => openExternal(uberRideUrl(toCoord.lat, toCoord.lng, toItem.name))}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary-soft py-[12px] text-[14px] font-bold text-primary-deep active:scale-[0.98]"
+                >
+                  <Icon name="car" size={16} /> Uber
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openExternal(grabUrl())}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary-soft py-[12px] text-[14px] font-bold text-primary-deep active:scale-[0.98]"
+                >
+                  <Icon name="car" size={16} /> Grab
+                </button>
+              </div>
+            </div>
+          )}
+
           {transport && (
             <button
               type="button"

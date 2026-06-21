@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Day, Document, Item } from '../../../lib/types'
 import { displayName, type ItemPatch } from '../../../lib/itinerary'
+import { kkdaySearchUrl, klookSearchUrl, openExternal } from '../../../lib/deeplinks'
 import { formatDurationZh, tzForCoords, tzOffsetLabel, tzLabel } from '../../../lib/time'
 import { formatMin, parseHHMM, type EffTime } from '../../../lib/schedule'
 import Icon from '../../Icon'
@@ -345,6 +346,27 @@ export default function PlaceDetail({
         >
           <Icon name="nav" size={17} /> 導航
         </button>
+      </div>
+
+      {/* 訂票・活動 deep link（功能 13）：以地點名搜尋，跳轉外部平台（無下單 API） */}
+      <div className="mb-[14px]">
+        <Eyebrow>訂票・活動</Eyebrow>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => openExternal(kkdaySearchUrl(displayName(item)))}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary-soft py-[12px] text-[14px] font-bold text-primary-deep active:scale-[0.98]"
+          >
+            <Icon name="ticket" size={16} /> KKday
+          </button>
+          <button
+            type="button"
+            onClick={() => openExternal(klookSearchUrl(displayName(item)))}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary-soft py-[12px] text-[14px] font-bold text-primary-deep active:scale-[0.98]"
+          >
+            <Icon name="ticket" size={16} /> Klook
+          </button>
+        </div>
       </div>
 
       <MoveRemoveActions

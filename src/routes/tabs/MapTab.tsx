@@ -43,6 +43,8 @@ import { errMessage } from '../../lib/errMessage'
 import { env } from '../../lib/env'
 import { formatRange } from '../../lib/date'
 import { useIsWide } from '../../lib/useIsWide'
+import { useOnline } from '../../lib/useOnline'
+import { getSnapshot, saveSnapshot } from '../../lib/offline/itineraryCache'
 import type { AreaCandidate, BookmarkList, Day, Item, Transport, TripWithMembers } from '../../lib/types'
 import Icon from '../../components/Icon'
 import Sheet from '../../components/ui/Sheet'
@@ -60,6 +62,7 @@ import TransitDetail, { type TransitSavePayload } from '../../components/map/det
 import PlaceSearch, { type PickKind, type PickedPlace } from '../../components/map/PlaceSearch'
 import AddAreaSheet from '../../components/map/AddAreaSheet'
 import NotificationsSheet from '../../components/NotificationsSheet'
+import OfflineItinerary from '../../components/map/OfflineItinerary'
 
 function todayStr(): string {
   const n = new Date()
@@ -81,6 +84,7 @@ export default function MapTab() {
   const meId = user?.id ?? ''
   const { ticks, unread, markSeen } = useTripRealtime()
   const isWide = useIsWide() // 寬螢幕：地圖左側常駐 + 當日行程右欄（決策 1）
+  const online = useOnline() // 階段 7：離線時改顯唯讀快取行程（地圖需網路）
 
   const [trip, setTrip] = useState<TripWithMembers | null>(null)
   const [days, setDays] = useState<Day[]>([])
@@ -139,7 +143,27 @@ export default function MapTab() {
         const today = todayStr()
         setCurrentDayId(d.find((x) => x.date === today)?.id ?? d[0]?.id ?? null)
       } catch (e) {
-        if (active) setError(errMessage(e))
+        // navigator 判定離線 → 用本機快取進唯讀模式（不顯示錯誤，交給 !online 分支渲染 OfflineItinerary）
+        if (!navigator.onLine) {
+          try {
+            const snap = await getSnapshot(tripId)
+            if (active && snap) {
+              setTrip(snap.trip)
+              setDays(snap.days)
+              setItems(snap.items)
+              setCandidates(snap.candidates)
+              setTransports(snap.transports)
+              setListMetas(snap.listMetas)
+              setCurrentDayId(
+                snap.days.find((x) => x.date === todayStr())?.id ?? snap.days[0]?.id ?? null,
+              )
+            }
+          } catch (cacheErr) {
+            console.warn('[map] 讀取離線快取失敗', cacheErr)
+          }
+        } else if (active) {
+          setError(errMessage(e))
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -149,6 +173,20 @@ export default function MapTab() {
       active = false
     }
   }, [tripId])
+
+  // 階段 7：連線且資料就緒時，把整包行程寫入離線快取（初載與 realtime 刷新後皆更新）。
+  useEffect(() => {
+    if (!online || loading || !trip) return
+    void saveSnapshot(tripId, {
+      trip,
+      days,
+      items,
+      candidates,
+      transports,
+      listMetas,
+      cachedAt: new Date().toISOString(),
+    }).catch((e) => console.warn('[map] 寫入離線快取失敗', e))
+  }, [online, loading, trip, days, items, candidates, transports, listMetas, tripId])
 
   // ---- Realtime（階段 6）：tick 變更 → 靜默 refetch（不閃 loading、不重設目前天）----
   // 鏡像 items 給 reloadCandidates 用（避免 callback 依賴 items 造成每次重建）
@@ -709,6 +747,18 @@ export default function MapTab() {
 
   if (loading) {
     return <div className="flex h-full items-center justify-center text-ink-3">載入中…</div>
+  }
+  // 離線：地圖/搜尋/即時路線需網路，改顯唯讀快取行程（無快取時元件自顯「先連線一次」提示）
+  if (!online) {
+    return (
+      <OfflineItinerary
+        trip={trip}
+        days={days}
+        items={items}
+        candidates={candidates}
+        transports={transports}
+      />
+    )
   }
   if (error && !trip) {
     return (
