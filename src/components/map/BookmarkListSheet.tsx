@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Day, Item } from '../../lib/types'
 import { displayName } from '../../lib/itinerary'
 import Sheet from '../ui/Sheet'
@@ -43,9 +43,41 @@ export default function BookmarkListSheet({
     return result
   }, [bookmarks])
 
+  // 橫列清單分頁：null = 全部（分組總覽），其餘為選中的清單名（只看該清單）
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  // 選中的清單若被清空（移除最後一筆 / 改標籤），自動退回「全部」，避免停在空白分頁
+  useEffect(() => {
+    if (activeTab !== null && !sections.some((s) => s.tag === activeTab)) setActiveTab(null)
+  }, [sections, activeTab])
+  const activeSection = activeTab === null ? null : sections.find((s) => s.tag === activeTab)
+
+  const renderRow = (b: Item, keyPrefix: string) => (
+    <BookmarkRow
+      key={`${keyPrefix}:${b.id}`}
+      item={b}
+      days={days}
+      knownTags={knownTags}
+      onScheduleToDay={onScheduleToDay}
+      onRemove={onRemove}
+      onUpdateTags={onUpdateTags}
+    />
+  )
+
+  // chip 樣式：選中實心、未選 soft；未分類用中性灰
+  const chipClass = (selected: boolean, untagged = false) =>
+    `flex flex-none items-center gap-1 whitespace-nowrap rounded-full px-[13px] py-[6px] text-[12.5px] font-bold active:scale-95 ${
+      selected
+        ? untagged
+          ? 'bg-ink-2 text-white'
+          : 'bg-primary text-white'
+        : untagged
+          ? 'bg-line text-ink-3'
+          : 'bg-primary-soft text-primary-deep'
+    }`
+
   return (
     <Sheet onClose={onClose}>
-      <div className="flex max-h-full flex-col px-[22px] pb-[28px] pt-1">
+      <div className="flex min-h-0 flex-1 flex-col px-[22px] pb-[28px] pt-1">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-xl font-bold">
             書籤 <span className="num text-ink-3">{bookmarks.length}</span>
@@ -60,6 +92,32 @@ export default function BookmarkListSheet({
         </div>
         <p className="mb-3 text-[12.5px] text-ink-3">依清單分類收藏；加到行程後仍留在這裡。</p>
 
+        {bookmarks.length > 0 && (
+          <div className="mb-3 flex flex-none gap-2 overflow-x-auto [scrollbar-width:none]">
+            <button
+              type="button"
+              onClick={() => setActiveTab(null)}
+              className={chipClass(activeTab === null)}
+            >
+              全部 <span className="num opacity-70">{bookmarks.length}</span>
+            </button>
+            {sections.map((sec) => {
+              const untagged = sec.tag === UNTAGGED
+              return (
+                <button
+                  key={sec.tag}
+                  type="button"
+                  onClick={() => setActiveTab(sec.tag)}
+                  className={chipClass(activeTab === sec.tag, untagged)}
+                >
+                  {!untagged && <Icon name="bookmark" size={12} />}
+                  {sec.tag} <span className="num opacity-70">{sec.items.length}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
           {bookmarks.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
@@ -70,7 +128,8 @@ export default function BookmarkListSheet({
                 在地圖搜尋或點地標，按「加入書籤」收藏想去的地方。
               </p>
             </div>
-          ) : (
+          ) : activeTab === null ? (
+            // 全部：依清單分組總覽
             <div className="flex flex-col gap-4 pb-2">
               {sections.map((sec) => (
                 <div key={sec.tag}>
@@ -88,20 +147,15 @@ export default function BookmarkListSheet({
                     <span className="num text-[12px] text-ink-3">{sec.items.length}</span>
                   </div>
                   <div className="flex flex-col gap-[10px]">
-                    {sec.items.map((b) => (
-                      <BookmarkRow
-                        key={`${sec.tag}:${b.id}`}
-                        item={b}
-                        days={days}
-                        knownTags={knownTags}
-                        onScheduleToDay={onScheduleToDay}
-                        onRemove={onRemove}
-                        onUpdateTags={onUpdateTags}
-                      />
-                    ))}
+                    {sec.items.map((b) => renderRow(b, sec.tag))}
                   </div>
                 </div>
               ))}
+            </div>
+          ) : (
+            // 單一清單：平鋪該清單的書籤（分類已由上方 chip 表明）
+            <div className="flex flex-col gap-[10px] pb-2">
+              {activeSection?.items.map((b) => renderRow(b, activeSection.tag))}
             </div>
           )}
         </div>

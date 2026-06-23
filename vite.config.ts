@@ -3,20 +3,30 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 // GitHub Pages 子路徑：網址為 https://hfuhsu108.github.io/<repo>/
 // 之後若 repo 名不同，改這個常數即可（dev 模式維持 '/'，不影響本機）。
 const REPO_BASE = '/CoTravel/'
 
-// 版本識別：CI 用 GITHUB_SHA，本機 fallback 到 git short SHA；都拿不到時記 'dev'。
+// 語意版本取自 package.json，作為設定頁顯示的主版本號（發布時手動 bump）
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')) as {
+  version: string
+}
+
+// 版本識別：語意版本（package.json）為主，附建置 SHA（CI 用 GITHUB_SHA，本機用 git short SHA），
 // 供設定頁顯示「目前版本」，讓使用者部署後能在手機上比對是否已更新到位。
 function resolveAppVersion(): string {
-  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
-  try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
-  } catch {
-    return 'dev'
-  }
+  const sha = process.env.GITHUB_SHA
+    ? process.env.GITHUB_SHA.slice(0, 7)
+    : (() => {
+        try {
+          return execSync('git rev-parse --short HEAD').toString().trim()
+        } catch {
+          return ''
+        }
+      })()
+  return sha ? `v${pkg.version} (${sha})` : `v${pkg.version}`
 }
 
 export default defineConfig(({ command }) => {
