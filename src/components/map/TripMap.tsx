@@ -269,7 +269,7 @@ function ListMarker({ icon, color, dim }: { icon: IconName; color: string; dim: 
         }}
       >
         <span style={{ transform: 'rotate(-45deg)', color: '#fff', display: 'flex' }}>
-          <Icon name={icon} size={14} sw={2.1} />
+          <Icon name={icon} size={14} />
         </span>
       </div>
     </div>

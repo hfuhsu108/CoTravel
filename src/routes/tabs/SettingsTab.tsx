@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { DateTime } from 'luxon'
 import Icon, { type IconName } from '../../components/Icon'
+import { usePwa } from '../../lib/pwa/PwaProvider'
 import TripSettingsPanel from './settings/TripSettingsPanel'
 import ListsPanel from './settings/ListsPanel'
 import PackingCategoryPanel from './settings/PackingCategoryPanel'
@@ -18,10 +20,79 @@ const TITLES: Record<Exclude<Section, 'menu'>, string> = {
   packing: '行李分類',
 }
 
+// 「關於與更新」用的列：有 onClick 才是按鈕（其餘為純資訊列，無點擊回饋）
+function AboutRow({
+  icon,
+  label,
+  sub,
+  onClick,
+  accent,
+  last,
+}: {
+  icon: IconName
+  label: string
+  sub: string
+  onClick?: () => void
+  accent?: boolean
+  last?: boolean
+}) {
+  const cls = `flex w-full items-center gap-3 px-[14px] py-[15px] text-left ${
+    last ? '' : 'border-b border-line'
+  } ${onClick ? 'active:bg-surface-2' : ''}`
+  const body = (
+    <>
+      <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[12px] bg-primary-soft text-primary-deep">
+        <Icon name={icon} size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-[15px] font-bold ${accent ? 'text-primary-deep' : ''}`}>
+          {label}
+        </span>
+        <span className="block text-[12.5px] text-ink-3">{sub}</span>
+      </span>
+    </>
+  )
+  return onClick ? (
+    <button type="button" onClick={onClick} className={cls}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
+  )
+}
+
+// build 時間以 ISO（UTC）注入，顯示時轉本地時區
+function formatBuiltAt(iso: string): string {
+  const dt = DateTime.fromISO(iso)
+  return dt.isValid ? dt.toFormat('yyyy-LL-dd HH:mm') : iso
+}
+
 export default function SettingsTab() {
   const [section, setSection] = useState<Section>('menu')
+  const pwa = usePwa()
 
   if (section === 'menu') {
+    // 檢查更新列：依狀態變換標籤與動作（available 時整列改為「立即更新」）
+    const update: { label: string; sub: string; onClick?: () => void } =
+      pwa.checkResult === 'checking'
+        ? { label: '檢查更新', sub: '檢查中…' }
+        : pwa.checkResult === 'available'
+          ? { label: '有新版本可用', sub: '點此立即更新並重新載入', onClick: pwa.applyUpdate }
+          : pwa.checkResult === 'latest'
+            ? { label: '檢查更新', sub: '已是最新版本', onClick: () => void pwa.checkForUpdate() }
+            : pwa.checkResult === 'error'
+              ? { label: '檢查更新', sub: '暫時無法檢查，請稍後再試', onClick: () => void pwa.checkForUpdate() }
+              : { label: '檢查更新', sub: '看看有沒有新版本', onClick: () => void pwa.checkForUpdate() }
+
+    // 安裝列：可安裝→按鈕；已安裝/iOS/不支援→純提示
+    const install: { sub: string; onClick?: () => void } = pwa.installed
+      ? { sub: '已安裝，可從主畫面開啟' }
+      : pwa.canInstall
+        ? { sub: '加到主畫面，啟動更快', onClick: () => void pwa.promptInstall() }
+        : pwa.isIOS
+          ? { sub: '用 Safari「分享」→「加入主畫面」' }
+          : { sub: '可從瀏覽器選單選「安裝／加入主畫面」' }
+
     return (
       <div className="flex h-full flex-col lg:mx-auto lg:w-full lg:max-w-[720px]">
         <div className="flex-none px-4 pb-2 pt-3">
@@ -48,6 +119,29 @@ export default function SettingsTab() {
                 <Icon name="chevR" size={18} className="flex-none text-ink-4" />
               </button>
             ))}
+          </div>
+
+          {/* 關於與更新：版本、檢查更新（手動套用）、安裝為應用程式 */}
+          <div className="mt-3 overflow-hidden rounded-lg bg-surface shadow-1">
+            <AboutRow
+              icon="info"
+              label="關於同行"
+              sub={`版本 ${pwa.version} · ${formatBuiltAt(pwa.builtAt)}`}
+            />
+            <AboutRow
+              icon="refresh"
+              label={update.label}
+              sub={update.sub}
+              accent={pwa.checkResult === 'available'}
+              onClick={update.onClick}
+            />
+            <AboutRow
+              icon="download"
+              label="安裝為應用程式"
+              sub={install.sub}
+              onClick={install.onClick}
+              last
+            />
           </div>
         </div>
       </div>

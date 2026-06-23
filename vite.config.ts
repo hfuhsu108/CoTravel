@@ -2,16 +2,33 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
 
 // GitHub Pages 子路徑：網址為 https://hfuhsu108.github.io/<repo>/
 // 之後若 repo 名不同，改這個常數即可（dev 模式維持 '/'，不影響本機）。
 const REPO_BASE = '/CoTravel/'
+
+// 版本識別：CI 用 GITHUB_SHA，本機 fallback 到 git short SHA；都拿不到時記 'dev'。
+// 供設定頁顯示「目前版本」，讓使用者部署後能在手機上比對是否已更新到位。
+function resolveAppVersion(): string {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
 
 export default defineConfig(({ command }) => {
   const base = command === 'build' ? REPO_BASE : '/'
 
   return {
     base,
+    // 編譯期注入版本資訊（dev 與 build 皆生效），由設定頁顯示
+    define: {
+      __APP_VERSION__: JSON.stringify(resolveAppVersion()),
+      __APP_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
@@ -20,7 +37,8 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       VitePWA({
-        registerType: 'autoUpdate',
+        // prompt：偵測到新版時不靜默重載，由設定頁「檢查更新」讓使用者手動套用
+        registerType: 'prompt',
         // scope / start_url 對齊 base，避免 GitHub Pages 子路徑下 SW 失效
         scope: base,
         includeAssets: ['favicon.svg'],
