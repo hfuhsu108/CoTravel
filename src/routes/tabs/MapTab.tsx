@@ -55,6 +55,7 @@ import DayTabs from '../../components/map/DayTabs'
 import DaySidebar from '../../components/map/DaySidebar'
 import MarkerPopup from '../../components/map/MarkerPopup'
 import BookmarkListSheet from '../../components/map/BookmarkListSheet'
+import BookmarkDetailSheet from '../../components/map/BookmarkDetailSheet'
 import ListPickerSheet from '../../components/map/ListPickerSheet'
 import PoiPopup from '../../components/map/PoiPopup'
 import type { PoiDetails } from '../../lib/places'
@@ -115,6 +116,7 @@ export default function MapTab() {
   const [poi, setPoi] = useState<PoiDetails | null>(null)
   // 功能 2：書籤（收藏）列表
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [bookmarkDetailItem, setBookmarkDetailItem] = useState<Item | null>(null)
   // 功能 2：加入書籤前的暫存地點（先選清單再 addItem，像 Google 地圖）
   const [pendingBookmark, setPendingBookmark] = useState<PickedPlace | null>(null)
 
@@ -972,6 +974,7 @@ export default function MapTab() {
             fromItem={transitFrom}
             toItem={transitTo}
             transport={editingTransport}
+            meId={meId}
             onClose={() => setTransitEdit(null)}
             onSave={(payload) => handleSaveTransport(transitEdit.fromId, transitEdit.toId, payload)}
             onRemove={() =>
@@ -1017,9 +1020,32 @@ export default function MapTab() {
               setBookmarkOpen(false)
               setSearch({ mode: 'add' })
             }}
+            onOpenDetail={(item) => setBookmarkDetailItem(item)}
             onScheduleToDay={(item, dayId) => handleMoveDay(item.id, dayId)}
             onRemove={handleRemoveBookmark}
             onUpdateTags={(item, tags) => handleUpdateItem(item.id, { tags })}
+          />
+        )}
+
+        {/* 書籤詳情（全頁浮層）：點書籤列表裡的景點名開啟 */}
+        {bookmarkDetailItem && trip && (
+          <BookmarkDetailSheet
+            item={bookmarkDetailItem}
+            days={days}
+            members={trip.members}
+            meId={meId}
+            onClose={() => setBookmarkDetailItem(null)}
+            onUpdate={async (patch) => {
+              await handleUpdateItem(bookmarkDetailItem.id, patch)
+              setBookmarkDetailItem((prev) =>
+                prev ? { ...prev, ...patch } as Item : null,
+              )
+            }}
+            onScheduleToDay={(dayId) => handleMoveDay(bookmarkDetailItem.id, dayId)}
+            onRemove={async () => {
+              await handleRemoveBookmark(bookmarkDetailItem)
+              setBookmarkDetailItem(null)
+            }}
           />
         )}
 

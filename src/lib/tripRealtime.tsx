@@ -27,6 +27,7 @@ export type TableKey =
   | 'packing_items'
   | 'packing_categories'
   | 'bookmark_lists'
+  | 'reminders'
 
 const TABLE_KEYS: TableKey[] = [
   'items',
@@ -37,6 +38,7 @@ const TABLE_KEYS: TableKey[] = [
   'packing_items',
   'packing_categories',
   'bookmark_lists',
+  'reminders',
 ]
 
 const ZERO_TICKS: Record<TableKey, number> = {
@@ -48,6 +50,7 @@ const ZERO_TICKS: Record<TableKey, number> = {
   packing_items: 0,
   packing_categories: 0,
   bookmark_lists: 0,
+  reminders: 0,
 }
 
 export interface TripRealtimeValue {

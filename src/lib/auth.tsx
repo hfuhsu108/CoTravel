@@ -3,6 +3,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { supabase } from './supabase'
 import { upsertMyProfile } from './api'
+import { isPushSupported, subscribeToPush } from './pushSubscription'
 
 interface AuthContextValue {
   session: Session | null
@@ -44,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return
     upsertMyProfile(user).catch((e) => console.error('[auth] 建立/同步 profile 失敗', e))
+    // 若通知已授權，靜默同步 push subscription（不主動彈權限對話框——iOS 要使用者手勢）
+    if (isPushSupported() && Notification.permission === 'granted') {
+      subscribeToPush(user.id).catch((e) => console.warn('[auth] 推播訂閱同步失敗', e))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 

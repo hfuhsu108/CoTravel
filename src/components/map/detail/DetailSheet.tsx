@@ -159,6 +159,7 @@ export default function DetailSheet({
             effTime={effTime}
             warnings={warnings}
             linkedDocs={linkedDocs}
+            meId={meId}
             onManageDocs={() => setManageOpen(true)}
             onUpdate={onUpdate}
             onRemove={onRemove}

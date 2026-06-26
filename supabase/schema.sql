@@ -763,3 +763,53 @@ create policy "members rw document_lodgings" on document_lodgings
 insert into document_lodgings (document_id, lodging_id)
   select doc_id, id from lodgings where doc_id is not null
   on conflict do nothing;
+
+-- ----------------------------------------------------------------
+-- 9. 提醒與推播（Web Push 通知功能）
+-- ----------------------------------------------------------------
+
+-- 9a. 提醒（掛在行程項目/交通/住宿上；fire_at 為 UTC 觸發時刻）
+create table if not exists reminders (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references trips(id) on delete cascade,
+  target_type text not null,                -- 'item' | 'transport' | 'lodging'
+  target_id uuid not null,                  -- items.id / transports.id / lodgings.id
+  target_name text not null,                -- 顯示用快照（避免反查）
+  template text not null default 'custom',  -- 'restaurant' | 'checkin' | 'boarding' | 'checkout' | 'custom'
+  message text,                             -- 自訂提醒訊息（選填）
+  fire_at timestamptz not null,             -- UTC 觸發時刻（由 toInstantUTC 算出）
+  offset_minutes int not null default 0,    -- 提前幾分鐘（UI 顯示/重算用）
+  fired boolean not null default false,     -- Edge Function 觸發後標 true
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+alter table reminders enable row level security;
+drop policy if exists "members rw reminders" on reminders;
+create policy "members rw reminders" on reminders
+  for all using (is_trip_member(trip_id)) with check (is_trip_member(trip_id));
+
+-- 9b. 推播訂閱（每人每裝置一筆；Edge Function 用 service_role key 讀，不受 RLS 限制）
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  endpoint text not null,                   -- PushSubscription.endpoint（唯一識別裝置）
+  keys_p256dh text not null,                -- PushSubscription.keys.p256dh
+  keys_auth text not null,                  -- PushSubscription.keys.auth
+  created_at timestamptz default now(),
+  unique (user_id, endpoint)
+);
+alter table push_subscriptions enable row level security;
+drop policy if exists "own subscriptions rw" on push_subscriptions;
+create policy "own subscriptions rw" on push_subscriptions
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 9c. reminders 加進 Realtime publication（夥伴即時看到對方設的提醒）
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'reminders'
+  ) then
+    alter publication supabase_realtime add table public.reminders;
+  end if;
+end $$;

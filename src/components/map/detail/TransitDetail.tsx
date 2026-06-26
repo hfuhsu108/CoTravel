@@ -12,6 +12,7 @@ import Button from '../../ui/Button'
 import LinkedDocs from '../../docs/LinkedDocs'
 import DocLinkSheet from '../../docs/DocLinkSheet'
 import FlightSchedule from '../../docs/FlightSchedule'
+import ReminderSection from '../../ReminderSection'
 import MiniRouteMap from '../MiniRouteMap'
 import RoutePreviewMap from '../RoutePreviewMap'
 import { DetailHead } from './parts'
@@ -32,6 +33,7 @@ interface TransitDetailProps {
   fromItem: Item
   toItem: Item
   transport: Transport | null // 既有設定（null = 新建）
+  meId: string
   onClose: () => void
   onSave: (payload: TransitSavePayload) => Promise<void>
   onRemove: () => Promise<void>
@@ -61,6 +63,7 @@ export default function TransitDetail({
   fromItem,
   toItem,
   transport,
+  meId,
   onClose,
   onSave,
   onRemove,
@@ -289,6 +292,14 @@ export default function TransitDetail({
           </div>
           <p className="mb-4 text-center text-[12px] text-ink-3">時間・機票的編輯請至「文件 → 機票」分頁</p>
           <LinkedDocs docs={linkedDocs} onManage={() => setManageOpen(true)} />
+          <ReminderSection
+            targetType="transport"
+            targetId={transport.id}
+            targetName={`${fromItem.name} → ${toItem.name}${transport.flight_no ? ` (${transport.flight_no})` : ''}`}
+            baseTime={transport.depart_local ?? null}
+            baseTz={transport.depart_tz ?? null}
+            meId={meId}
+          />
           {transport && (
             <button
               type="button"

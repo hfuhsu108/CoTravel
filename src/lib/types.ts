@@ -218,6 +218,32 @@ export interface BookmarkList {
   created_at: string
 }
 
+// ---- 提醒（Web Push 通知功能） ----
+
+export type ReminderTemplate =
+  | 'restaurant'
+  | 'checkin'
+  | 'airport_arrival'
+  | 'boarding'
+  | 'checkout'
+  | 'custom'
+export type ReminderTargetType = 'item' | 'transport' | 'lodging'
+
+export interface Reminder {
+  id: string
+  trip_id: string
+  target_type: ReminderTargetType
+  target_id: string
+  target_name: string
+  template: ReminderTemplate
+  message: string | null
+  fire_at: string // ISO timestamptz（UTC）
+  offset_minutes: number
+  fired: boolean
+  created_by: string | null
+  created_at: string
+}
+
 // ---- 改動紀錄（階段 6；對應 docs/03 的 activity_log） ----
 
 export interface ActivityEntry {

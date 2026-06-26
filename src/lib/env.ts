@@ -5,6 +5,7 @@ type EnvKey =
   | 'VITE_SUPABASE_ANON_KEY'
   | 'VITE_GOOGLE_MAPS_API_KEY'
   | 'VITE_GOOGLE_MAPS_MAP_ID'
+  | 'VITE_VAPID_PUBLIC_KEY'
 
 function read(key: EnvKey): string {
   const value = import.meta.env[key]
@@ -24,4 +25,6 @@ export const env = {
   // AdvancedMarker 需要 Map 帶 mapId；未設時用 Google 的 dev 用 raster id（開發足夠，
   // 正式部署再到 Google Cloud → Map Management 建自家 mapId 填入 .env）。故不經 read() 警告。
   googleMapsMapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID',
+  // Web Push VAPID 公鑰：留空時推播功能靜默不啟用（不影響其他功能），故不經 read() 警告。
+  vapidPublicKey: import.meta.env.VITE_VAPID_PUBLIC_KEY || '',
 }

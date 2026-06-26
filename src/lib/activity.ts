@@ -12,6 +12,8 @@ export type ActivityAction =
   | 'transport_remove'
   | 'doc_add'
   | 'doc_remove'
+  | 'reminder_set'
+  | 'reminder_remove'
 
 // fire-and-forget：通知紀錄失敗不應阻斷主要操作（主操作已成功），只留 console 線索。
 // target_summary 存「不含人名的完整動作句」（如 把「梅田藍天大廈」加到 Day 2），

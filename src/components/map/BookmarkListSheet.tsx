@@ -12,6 +12,7 @@ interface BookmarkListSheetProps {
   knownTags: string[] // 全趟用過的標籤（供快速選用）
   onClose: () => void
   onAddBookmark: () => void
+  onOpenDetail: (item: Item) => void
   onScheduleToDay: (item: Item, dayId: string) => Promise<void>
   onRemove: (item: Item) => Promise<void> // 已排入→只移出收藏；純書籤→整筆刪
   onUpdateTags: (item: Item, tags: string[]) => Promise<void>
@@ -25,6 +26,7 @@ export default function BookmarkListSheet({
   knownTags,
   onClose,
   onAddBookmark,
+  onOpenDetail,
   onScheduleToDay,
   onRemove,
   onUpdateTags,
@@ -57,6 +59,7 @@ export default function BookmarkListSheet({
       item={b}
       days={days}
       knownTags={knownTags}
+      onOpenDetail={onOpenDetail}
       onScheduleToDay={onScheduleToDay}
       onRemove={onRemove}
       onUpdateTags={onUpdateTags}
@@ -170,6 +173,7 @@ function BookmarkRow({
   item,
   days,
   knownTags,
+  onOpenDetail,
   onScheduleToDay,
   onRemove,
   onUpdateTags,
@@ -177,6 +181,7 @@ function BookmarkRow({
   item: Item
   days: Day[]
   knownTags: string[]
+  onOpenDetail: (item: Item) => void
   onScheduleToDay: (item: Item, dayId: string) => Promise<void>
   onRemove: (item: Item) => Promise<void>
   onUpdateTags: (item: Item, tags: string[]) => Promise<void>
@@ -215,17 +220,29 @@ function BookmarkRow({
   return (
     <div className="rounded-lg bg-surface p-[10px] shadow-1">
       <div className="flex items-center gap-[11px]">
-        {item.photo_url ? (
-          <img
-            src={item.photo_url}
-            alt={displayName(item)}
-            className="h-[52px] w-[52px] flex-none rounded-[13px] object-cover"
-          />
-        ) : (
-          <div className="ph ph-warm h-[52px] w-[52px] flex-none rounded-[13px]" />
-        )}
+        <button
+          type="button"
+          onClick={() => onOpenDetail(item)}
+          className="flex-none active:opacity-80"
+        >
+          {item.photo_url ? (
+            <img
+              src={item.photo_url}
+              alt={displayName(item)}
+              className="h-[52px] w-[52px] rounded-[13px] object-cover"
+            />
+          ) : (
+            <div className="ph ph-warm h-[52px] w-[52px] rounded-[13px]" />
+          )}
+        </button>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[15px] font-extrabold">{displayName(item)}</div>
+          <button
+            type="button"
+            onClick={() => onOpenDetail(item)}
+            className="block w-full truncate text-left text-[15px] font-extrabold active:opacity-80"
+          >
+            {displayName(item)}
+          </button>
           <div className="mt-[3px] flex flex-wrap items-center gap-[6px]">
             <span
               className={`rounded-full px-[9px] py-[2px] text-[11px] font-bold ${

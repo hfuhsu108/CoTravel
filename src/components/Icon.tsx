@@ -51,6 +51,8 @@ import {
   faArrowsRotate,
   faDownload,
   faCircleInfo,
+  faPlaneDeparture,
+  faHotel,
 } from '@fortawesome/free-solid-svg-icons'
 import { faHeart as faHeartReg, faStar as faStarReg } from '@fortawesome/free-regular-svg-icons'
 import { faGoogle } from '@fortawesome/free-brands-svg-icons'
@@ -115,6 +117,9 @@ const ICONS = {
   refresh: { solid: faArrowsRotate },
   download: { solid: faDownload },
   info: { solid: faCircleInfo },
+  // 提醒功能用
+  planeDep: { solid: faPlaneDeparture },
+  hotel: { solid: faHotel },
 } satisfies Record<string, IconEntry>
 
 export type IconName = keyof typeof ICONS

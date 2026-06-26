@@ -8,6 +8,7 @@ import { formatMin, parseHHMM, type EffTime } from '../../../lib/schedule'
 import Icon from '../../Icon'
 import Time24Field from '../../ui/Time24Field'
 import LinkedDocs from '../../docs/LinkedDocs'
+import ReminderSection from '../../ReminderSection'
 import { DetailHead, InfoRow, Eyebrow } from './parts'
 import MoveRemoveActions from './MoveRemoveActions'
 import TagEditor from './TagEditor'
@@ -20,6 +21,7 @@ interface PlaceDetailProps {
   effTime: EffTime | null // 有效三時間（功能 4；含推算值）
   warnings: string[] // 時間防呆警告（功能 8）
   linkedDocs: Document[]
+  meId: string
   onManageDocs: () => void
   onUpdate: (patch: ItemPatch) => Promise<void>
   onRemove: () => Promise<void>
@@ -67,6 +69,7 @@ export default function PlaceDetail({
   effTime,
   warnings,
   linkedDocs,
+  meId,
   onManageDocs,
   onUpdate,
   onRemove,
@@ -302,6 +305,16 @@ export default function PlaceDetail({
           </div>
         )}
       </div>
+
+      <ReminderSection
+        targetType="item"
+        targetId={item.id}
+        targetName={displayName(item)}
+        baseTime={item.scheduled_time?.slice(0, 5) ?? null}
+        baseTz={itemTz}
+        baseDate={itemDate ?? null}
+        meId={meId}
+      />
 
       <div className="my-4">
         <Eyebrow>清單</Eyebrow>
