@@ -61,7 +61,7 @@ export default defineConfig(({ command }) => {
           display: 'standalone',
           scope: base,
           start_url: base,
-          // icons 由 scripts/gen-icons.mjs 從 public/icon.svg 產生（換圖重跑 npm run gen:icons）
+          // icons 由 scripts/gen-icons.mjs 從 branding/icon.png|svg 產生（換圖重跑 npm run gen:icons）
           icons: [
             {
               src: 'pwa-64x64.png',
