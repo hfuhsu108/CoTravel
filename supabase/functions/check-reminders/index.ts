@@ -110,6 +110,9 @@ Deno.serve(async (req) => {
               keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth },
             },
             payload,
+            // urgency high：讓 FCM 用高優先級，穿透 Android Doze（螢幕關閉省電）即時喚醒裝置；
+            // TTL 1 小時：到期提醒過久才送已無意義，避免裝置長時間離線後補送過時通知。
+            { urgency: 'high', TTL: 3600 },
           )
           sent++
         } catch (pushErr: unknown) {

@@ -19,6 +19,29 @@ export function isPushSupported(): boolean {
   )
 }
 
+export interface PushEnv {
+  supported: boolean
+  isIOS: boolean
+  isAndroid: boolean
+  isStandalone: boolean // 是否從主畫面 PWA 啟動（iOS 推播的硬性前提）
+  permission: NotificationPermission | 'unsupported'
+}
+
+// 偵測目前裝置/啟動環境，供設定頁決定要顯示開關還是哪種權限引導。
+export function getPushEnv(): PushEnv {
+  const ua = navigator.userAgent || ''
+  // iPadOS 13+ 會偽裝成 Macintosh，靠觸控點數輔助判斷
+  const isIOS =
+    /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)
+  const isAndroid = /android/i.test(ua)
+  const isStandalone =
+    window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true
+  const permission: NotificationPermission | 'unsupported' =
+    'Notification' in window ? Notification.permission : 'unsupported'
+  return { supported: isPushSupported(), isIOS, isAndroid, isStandalone, permission }
+}
+
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (!('Notification' in window)) return 'denied'
   if (Notification.permission !== 'default') return Notification.permission

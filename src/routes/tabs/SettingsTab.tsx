@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { DateTime } from 'luxon'
 import Icon, { type IconName } from '../../components/Icon'
 import { usePwa } from '../../lib/pwa/PwaProvider'
-import { useAuth } from '../../lib/auth'
-import { isPushSupported, subscribeToPush } from '../../lib/pushSubscription'
+import PushSettingRow from '../../components/PushSettingRow'
 import TripSettingsPanel from './settings/TripSettingsPanel'
 import ListsPanel from './settings/ListsPanel'
 import PackingCategoryPanel from './settings/PackingCategoryPanel'
@@ -72,14 +71,6 @@ function formatBuiltAt(iso: string): string {
 export default function SettingsTab() {
   const [section, setSection] = useState<Section>('menu')
   const pwa = usePwa()
-  const { user } = useAuth()
-  const [pushStatus, setPushStatus] = useState<'unknown' | 'unsupported' | 'denied' | 'granted' | 'default'>('unknown')
-  const [pushBusy, setPushBusy] = useState(false)
-
-  useEffect(() => {
-    if (!isPushSupported()) { setPushStatus('unsupported'); return }
-    setPushStatus(Notification.permission as 'denied' | 'granted' | 'default')
-  }, [])
 
   if (section === 'menu') {
     // 檢查更新列：依狀態變換標籤與動作（available 時整列改為「立即更新」）
@@ -151,34 +142,7 @@ export default function SettingsTab() {
               sub={install.sub}
               onClick={install.onClick}
             />
-            <AboutRow
-              icon="bell"
-              label={pushBusy ? '設定中…' : pushStatus === 'granted' ? '推播通知' : '啟用推播通知'}
-              sub={
-                pushStatus === 'unsupported'
-                  ? '此瀏覽器不支援推播通知'
-                  : pushStatus === 'denied'
-                    ? '通知已被封鎖，請至瀏覽器設定開啟'
-                    : pushStatus === 'granted'
-                      ? '已開啟，提醒到期時會推播通知'
-                      : '開啟後可在 App 關閉時收到提醒'
-              }
-              accent={pushStatus === 'default'}
-              onClick={
-                pushStatus === 'default' && user && !pushBusy
-                  ? async () => {
-                      setPushBusy(true)
-                      try {
-                        const ok = await subscribeToPush(user.id)
-                        setPushStatus(ok ? 'granted' : Notification.permission as 'denied' | 'default')
-                      } finally {
-                        setPushBusy(false)
-                      }
-                    }
-                  : undefined
-              }
-              last
-            />
+            <PushSettingRow last />
           </div>
         </div>
       </div>
