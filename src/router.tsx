@@ -1,6 +1,7 @@
 import { createHashRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthProvider, RequireAuth } from './lib/auth'
 import { PwaProvider } from './lib/pwa/PwaProvider'
+import PwaUpdateBanner from './components/PwaUpdateBanner'
 import Login from './routes/Login'
 import TripList from './routes/TripList'
 import TripMain from './routes/TripMain'
@@ -18,6 +19,7 @@ function AppRoot() {
   return (
     <PwaProvider>
       <AuthProvider>
+        <PwaUpdateBanner />
         <div
           className={`relative h-[100dvh] w-full overflow-hidden bg-bg ${
             wideRoute ? '' : 'mx-auto max-w-[480px]'

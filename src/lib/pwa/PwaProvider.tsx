@@ -56,6 +56,9 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   } = useRegisterSW({
     onRegisteredSW(_swUrl, reg) {
       regRef.current = reg
+      // 開啟 App 即主動檢查一次新版（需求 1）：抓到新版 → needRefresh 轉 true → 頂部提示條浮現。
+      // 離線或暫時失敗會 reject，吞掉即可（不影響既有的設定頁手動檢查）。
+      reg?.update().catch(() => {})
     },
   })
 
