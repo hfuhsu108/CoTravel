@@ -306,6 +306,38 @@ export async function removeFromBookmarks(item: Item): Promise<Item | null> {
   return null
 }
 
+// 「同一地點」門檻：約 30 公尺（緯度 1 度 ≈ 111km）。兩個都無 google_place_id 的點才用座標比，
+// 避免把相鄰但不同的店家（各有不同 place_id）誤判成同一個。
+const SAME_PLACE_DEG = 0.0003
+
+// 書籤 upsert 用：在本趟既有 items 中找出與目標「同一地點」的那筆。
+// 優先用 google_place_id 完全相等；若目標或既有點缺 id，再退用座標近似（SAME_PLACE_DEG 內）。
+// 目的：「加入書籤」時若該地點已存在（不論已排入或已是書籤），改標收藏旗標而非新增重複 item，
+// 否則會產生「同地點兩筆、且新書籤筆 day_id=null 顯示未排入」的錯亂。找不到回 null。
+export function findSamePlace(
+  items: Item[],
+  target: { google_place_id?: string | null; lat?: number | null; lng?: number | null },
+): Item | null {
+  if (target.google_place_id) {
+    const byId = items.find((i) => i.google_place_id === target.google_place_id)
+    if (byId) return byId
+  }
+  if (target.lat != null && target.lng != null) {
+    const { lat, lng } = target
+    const byCoord = items.find(
+      (i) =>
+        // 有 place_id 的已在上面比過；這裡只配「既有點無 id」者，免得把不同 place_id 的鄰店硬併
+        i.google_place_id == null &&
+        i.lat != null &&
+        i.lng != null &&
+        Math.abs(i.lat - lat) < SAME_PLACE_DEG &&
+        Math.abs(i.lng - lng) < SAME_PLACE_DEG,
+    )
+    if (byCoord) return byCoord
+  }
+  return null
+}
+
 // ---- area_candidates ----
 
 // 一次撈多個區域 item 的候選（側欄計數＋展開、區域詳情共用）

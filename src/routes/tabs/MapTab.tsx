@@ -22,6 +22,7 @@ import {
   displayName,
   duplicateItem,
   ensureDays,
+  findSamePlace,
   listCandidatesByItems,
   listItems,
   moveItemToDay,
@@ -485,30 +486,44 @@ export default function MapTab() {
   }
 
   // 功能 2：選好清單後才真正建立書籤（tags 即清單；至少一個）。失敗 throw 給 ListPickerSheet 顯示。
+  // upsert：本趟若已有同一地點（不論已排入或已是書籤），只標收藏旗標＋併入清單、不新增重複，
+  // 否則會產生「同地點兩筆、且新書籤筆 day_id=null 顯示未排入」的錯亂。
   async function handleConfirmBookmark(lists: string[]) {
     if (!pendingBookmark) return
     const place = pendingBookmark
-    const newItem = await addItem({
-      trip_id: tripId,
-      type: 'point',
-      status: 'bookmark',
-      day_id: null,
-      name: place.name,
-      lat: place.lat,
-      lng: place.lng,
-      google_place_id: place.google_place_id,
-      photo_url: place.photo_url,
-      is_bookmarked: true,
-      tags: lists,
-    })
-    setItems((its) => [...its, newItem])
+    const existing = findSamePlace(items, place)
+    if (existing) {
+      const mergedTags = [...new Set([...existing.tags, ...lists])]
+      const patch: ItemPatch = { is_bookmarked: true, tags: mergedTags }
+      // 既有點原本沒照片、而這次帶了照片 → 順手補上，書籤卡才有縮圖
+      if (!existing.photo_url && place.photo_url) patch.photo_url = place.photo_url
+      const updated = await updateItem(existing.id, patch)
+      setItems((its) => its.map((i) => (i.id === existing.id ? updated : i)))
+      const where = updated.day_id ? `（已在 ${dayLabelOf(updated.day_id)}，仍保留行程）` : ''
+      logActivity(tripId, meId, 'item_add', `把「${updated.name}」加進書籤${where}`)
+    } else {
+      const newItem = await addItem({
+        trip_id: tripId,
+        type: 'point',
+        status: 'bookmark',
+        day_id: null,
+        name: place.name,
+        lat: place.lat,
+        lng: place.lng,
+        google_place_id: place.google_place_id,
+        photo_url: place.photo_url,
+        is_bookmarked: true,
+        tags: lists,
+      })
+      setItems((its) => [...its, newItem])
+      logActivity(tripId, meId, 'item_add', `把「${place.name}」加進書籤（${lists.join('、')}）`)
+    }
     // 新清單名補建 metadata 列（best-effort：失敗不影響書籤本身）
     try {
       await ensureListsExist(tripId, lists)
     } catch (e) {
       console.warn('[map] 補建清單 metadata 失敗', e)
     }
-    logActivity(tripId, meId, 'item_add', `把「${place.name}」加進書籤（${lists.join('、')}）`)
     setPendingBookmark(null)
   }
 
