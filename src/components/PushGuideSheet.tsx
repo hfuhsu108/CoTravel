@@ -2,7 +2,7 @@ import type { PushEnv } from '../lib/pushSubscription'
 import Icon from './Icon'
 import Sheet from './ui/Sheet'
 
-export type GuideReason = 'ios-install' | 'blocked' | 'unsupported'
+export type GuideReason = 'ios-install' | 'blocked' | 'unsupported' | 'battery'
 
 interface PushGuideSheetProps {
   reason: GuideReason
@@ -19,6 +19,19 @@ interface Guide {
 
 // 依「為何無法直接開啟」與平台，組出對應的手動引導步驟。
 function buildGuide(reason: GuideReason, env: PushEnv): Guide {
+  if (reason === 'battery') {
+    return {
+      title: '讓鎖屏／關螢幕也能收到通知',
+      intro: 'Android 會在螢幕關閉後限制背景程式，需把電池設為「不受限制」，推播才會在鎖屏時即時送達。',
+      steps: [
+        '開啟「設定 → 應用程式 → 查看全部應用程式」',
+        '找到「同行」→ 點「電池」→ 改為「不受限制」',
+        '回上一步，對「Chrome」也做一樣的設定（改為「不受限制」）',
+      ],
+      note: '「同行」與「Chrome」兩個都要設，推播才穩定。小米／OPPO 等機型路徑或名稱略有不同，找到該 App 的「省電策略／背景活動」設為無限制即可。',
+    }
+  }
+
   if (reason === 'ios-install') {
     return {
       title: '在 iPhone 啟用推播通知',

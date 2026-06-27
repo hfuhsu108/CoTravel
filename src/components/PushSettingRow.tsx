@@ -90,15 +90,31 @@ export default function PushSettingRow({ last }: { last?: boolean }) {
   return (
     <>
       {isToggle ? (
-        <div className={rowCls}>
-          {body}
-          <Switch
-            checked={state === 'on'}
-            disabled={busy}
-            onChange={handleToggle}
-            ariaLabel="推播通知開關"
-          />
-        </div>
+        <>
+          <div className={rowCls}>
+            {body}
+            <Switch
+              checked={state === 'on'}
+              disabled={busy}
+              onChange={handleToggle}
+              ariaLabel="推播通知開關"
+            />
+          </div>
+          {/* Android 鎖屏收不到通知多半是電池最佳化擋背景；無法用 API 偵測，故主動提供引導入口 */}
+          {state === 'on' && env.isAndroid && (
+            <button
+              type="button"
+              onClick={() => setGuide('battery')}
+              className="flex w-full items-center gap-2 border-t border-line px-[14px] py-[11px] text-left active:bg-surface-2"
+            >
+              <Icon name="info" size={15} className="flex-none text-ink-3" />
+              <span className="flex-1 text-[12.5px] text-ink-3">
+                關螢幕收不到通知？點此把電池設為不受限制
+              </span>
+              <Icon name="chevR" size={15} className="flex-none text-ink-4" />
+            </button>
+          )}
+        </>
       ) : (
         <button type="button" onClick={openGuide} className={`${rowCls} active:bg-surface-2`}>
           {body}
