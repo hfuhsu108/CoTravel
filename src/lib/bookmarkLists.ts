@@ -8,36 +8,66 @@ import { deleteTagAcrossTrip, renameTagAcrossTrip } from './lists'
 
 // 清單可選 icon（Icon 集精選子集）與顏色色票（簡潔，不做全色盤）
 export const LIST_ICONS: IconName[] = [
-  'bookmark',
-  'heart',
-  'star',
-  'pin',
-  'camera',
-  'bag',
-  'sparkle',
-  'ticket',
+  // 美食飲品
+  'food',
+  'coffee',
+  'wine',
+  'icecream',
+  'pizza',
+  'bowl',
+  // 自然戶外
+  'mountain',
+  'beach',
+  'tree',
+  'water',
+  'camp',
+  'seedling',
+  // 文化古蹟
+  'landmark',
+  'torii',
+  'monument',
+  'museum',
+  'palette',
+  // 購物娛樂
+  'mall',
+  'ferris',
+  'shopping',
+  'gift',
+  'gem',
+  // 住宿休憩
   'bed',
+  'onsen',
+  'spa',
+  'tent',
+  // 交通移動
   'walk',
   'train',
   'car',
-  // 旅遊主題擴充：美食 / 自然 / 購物娛樂
-  'food',
-  'coffee',
-  'mountain',
-  'beach',
-  'onsen',
-  'mall',
-  'ferris',
+  'ferry',
+  'bicycle',
+  // 攝影紀念
+  'camera',
+  'cameraRetro',
+  'panorama',
+  'binoculars',
+  // 通用收藏
+  'heart',
+  'star',
+  'bookmark',
+  'flag',
+  'compass',
 ]
 export const LIST_COLORS = [
   '#f08fb0',
+  '#c770e0',
   '#7a6cf0',
+  '#4a90e8',
   '#3bb98f',
+  '#58c47a',
+  '#d4c030',
   '#f0a04b',
   '#e8607a',
-  '#4aa3e0',
-  '#9b59b6',
-  '#e0b020',
+  '#8a8a8a',
 ]
 export const DEFAULT_LIST_ICON: IconName = 'heart'
 export const DEFAULT_LIST_COLOR = '#f08fb0'

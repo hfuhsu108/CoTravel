@@ -23,15 +23,15 @@ export function modeWord(mode: TransportMode): string {
 export function modeRouteColor(mode: TransportMode): string {
   switch (mode) {
     case 'walk':
-      return '#3bb98f' // 綠
+      return '#6dbf8b' // 薄荷綠
     case 'transit':
-      return '#4aa3e0' // 藍
+      return '#e0895e' // 柿橘
     case 'drive':
-      return '#f0a04b' // 橘
+      return '#c4915e' // 沙棕
     case 'flight':
-      return '#7a6cf0' // 紫（主色）
+      return '#5b7db8' // 灰藍
     case 'bike':
-      return '#e0b020' // 金
+      return '#6fb8c9' // 水色
     case 'custom':
       return '#938cab' // 灰
   }
@@ -46,7 +46,7 @@ export function modeIcon(mode: TransportMode): IconName {
     case 'drive':
       return 'car'
     case 'bike':
-      return 'walk' // 無單車圖示，暫用步行；本階段 UI 未提供 bike
+      return 'bicycle'
     case 'custom':
       return 'nav'
     case 'flight':
