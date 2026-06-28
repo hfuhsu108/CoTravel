@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Day, Item } from '../../lib/types'
 import { displayName } from '../../lib/itinerary'
+import { googleMapsPlaceUrl, openExternal } from '../../lib/deeplinks'
+import { useLivePlaceDetails } from '../../lib/useLivePlaceDetails'
 import Icon from '../Icon'
 
 interface MarkerPopupProps {
@@ -11,8 +13,8 @@ interface MarkerPopupProps {
   onScheduleToDay: (dayId: string) => Promise<void> // 書籤「排入某天」用
 }
 
-// 點地圖標記浮出的小卡（畫面 2）：縮圖＋名稱＋動作。
-// 書籤 → 排入某天（展開日選）；已排入定點/區域 → 看詳情。
+// 點地圖標記浮出的小卡（畫面 2）：縮圖＋名稱＋基本資訊（評分／今日營業／備註）＋動作。
+// 書籤 → 排入某天（展開日選）；已排入定點/區域 → 看詳情；皆可一鍵在 Google 地圖開啟。
 export default function MarkerPopup({
   item,
   days,
@@ -23,6 +25,9 @@ export default function MarkerPopup({
   const isBookmark = item.status === 'bookmark'
   const [pickerOpen, setPickerOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // 即時抓評分／今日營業（無 google_place_id 的區域回 null，不顯示這兩列）
+  const live = useLivePlaceDetails(item.google_place_id)
+  const hasCoord = item.lat != null && item.lng != null
 
   return (
     <div
@@ -32,9 +37,14 @@ export default function MarkerPopup({
       <div className="overflow-hidden rounded-lg bg-surface shadow-3">
         <div className="flex">
           {item.photo_url ? (
-            <img src={item.photo_url} alt={displayName(item)} className="h-[88px] w-24 flex-none object-cover" />
+            <img
+              src={item.photo_url}
+              alt={displayName(item)}
+              className="w-24 flex-none self-stretch object-cover"
+              style={{ minHeight: 88 }}
+            />
           ) : (
-            <div className={`ph w-24 flex-none ${isBookmark ? 'ph-warm' : 'ph-cool'}`} />
+            <div className={`ph w-24 flex-none self-stretch ${isBookmark ? 'ph-warm' : 'ph-cool'}`} style={{ minHeight: 88 }} />
           )}
           <div className="min-w-0 flex-1 p-[11px]">
             <div className="flex items-start justify-between gap-2">
@@ -59,6 +69,39 @@ export default function MarkerPopup({
               </span>
             )}
 
+            {/* 評分／今日營業（即時查詢，抓不到就不顯示） */}
+            {(live?.rating != null || live?.hoursToday) && (
+              <div className="mt-[6px] flex flex-col gap-[3px] text-[12px] text-ink-3">
+                {live?.rating != null && (
+                  <span className="inline-flex items-center gap-[3px] font-bold text-ink-2">
+                    <Icon name="star" size={12} fill className="text-warn" />
+                    {live.rating.toFixed(1)}
+                  </span>
+                )}
+                {live?.hoursToday && (
+                  <span className="flex items-center gap-[4px]">
+                    <Icon name="clock" size={12} className="flex-none" />
+                    <span className="truncate">{live.hoursToday}</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* 我寫的備註（截兩行，避免小卡過高） */}
+            {item.notes && (
+              <p
+                className="mt-[6px] text-[12.5px] leading-[1.5] text-ink-2"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {item.notes}
+              </p>
+            )}
+
             <div className="mt-[10px] flex flex-wrap gap-2">
               {isBookmark ? (
                 <button
@@ -75,6 +118,19 @@ export default function MarkerPopup({
                   className="flex items-center gap-1 rounded-[12px] bg-primary px-3 py-[7px] text-[13px] font-bold text-white active:scale-95"
                 >
                   <Icon name="list" size={14} /> 看詳情
+                </button>
+              )}
+              {hasCoord && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openExternal(
+                      googleMapsPlaceUrl(item.lat as number, item.lng as number, item.google_place_id),
+                    )
+                  }
+                  className="flex items-center gap-1 rounded-[12px] bg-surface-2 px-3 py-[7px] text-[13px] font-bold text-ink-2 active:scale-95"
+                >
+                  <Icon name="nav" size={14} /> Google 地圖
                 </button>
               )}
             </div>

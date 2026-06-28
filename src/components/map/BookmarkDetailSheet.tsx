@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Day, Document, Item, TripMemberWithProfile } from '../../lib/types'
 import { displayName, type ItemPatch } from '../../lib/itinerary'
-import { kkdaySearchUrl, klookSearchUrl, openExternal } from '../../lib/deeplinks'
+import { googleMapsPlaceUrl, kkdaySearchUrl, klookSearchUrl, openExternal } from '../../lib/deeplinks'
+import { useLivePlaceDetails } from '../../lib/useLivePlaceDetails'
 import { listDocumentsByItem } from '../../lib/documents'
 import Icon from '../Icon'
 import Avatar from '../Avatar'
@@ -23,18 +23,6 @@ interface BookmarkDetailSheetProps {
   onRemove: () => Promise<void>
 }
 
-interface LiveDetails {
-  rating: number | null
-  address: string | null
-  hoursToday: string | null
-}
-
-function todayHours(descs: string[] | null | undefined): string | null {
-  if (!descs || descs.length === 0) return null
-  const idx = (new Date().getDay() + 6) % 7
-  return descs[idx] ?? null
-}
-
 export default function BookmarkDetailSheet({
   item,
   days,
@@ -46,10 +34,9 @@ export default function BookmarkDetailSheet({
   onRemove,
 }: BookmarkDetailSheetProps) {
   const { tripId = '' } = useParams()
-  const places = useMapsLibrary('places')
   const author = members.find((m) => m.user_id === item.created_by)
 
-  const [live, setLive] = useState<LiveDetails | null>(null)
+  const live = useLivePlaceDetails(item.google_place_id)
   const [editingAlias, setEditingAlias] = useState(false)
   const [aliasDraft, setAliasDraft] = useState('')
   const [notes, setNotes] = useState(item.notes ?? '')
@@ -57,30 +44,6 @@ export default function BookmarkDetailSheet({
   const [linkedDocs, setLinkedDocs] = useState<Document[]>([])
   const [manageOpen, setManageOpen] = useState(false)
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
-
-  useEffect(() => {
-    if (!places || !item.google_place_id) return
-    let active = true
-    ;(async () => {
-      try {
-        const place = new places.Place({ id: item.google_place_id as string })
-        await place.fetchFields({
-          fields: ['rating', 'formattedAddress', 'regularOpeningHours'],
-        })
-        if (!active) return
-        setLive({
-          rating: place.rating ?? null,
-          address: place.formattedAddress ?? null,
-          hoursToday: todayHours(place.regularOpeningHours?.weekdayDescriptions),
-        })
-      } catch (e) {
-        console.warn('[BookmarkDetail] 即時地點資訊取得失敗', e)
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [places, item.google_place_id])
 
   useEffect(() => {
     let active = true
@@ -123,10 +86,7 @@ export default function BookmarkDetailSheet({
 
   function handleNavigate() {
     if (item.lat == null || item.lng == null) return
-    const base = 'https://www.google.com/maps/search/?api=1'
-    const q = `&query=${item.lat},${item.lng}`
-    const pid = item.google_place_id ? `&query_place_id=${item.google_place_id}` : ''
-    window.open(`${base}${q}${pid}`, '_blank', 'noopener,noreferrer')
+    openExternal(googleMapsPlaceUrl(item.lat, item.lng, item.google_place_id))
   }
 
   const dayIndex =

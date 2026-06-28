@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo } from 'react'
+import { Fragment, useEffect, useMemo, useRef } from 'react'
 import {
   AdvancedMarker,
   AdvancedMarkerAnchorPoint,
@@ -32,6 +32,8 @@ interface TripMapProps {
   // 功能 4：點到 Google 地標（POI）→ 抓詳情後回傳；失敗回傳訊息
   onPoiSelected: (poi: PoiDetails) => void
   onPoiError: (message: string) => void
+  onBoundsChanged?: (bounds: google.maps.LatLngBoundsLiteral) => void
+  myLocation?: { lat: number; lng: number; nonce: number } | null
 }
 
 // 無項目時的預設視野（日本中心、低縮放）；有項目則 fitBounds 覆蓋。
@@ -52,6 +54,8 @@ export default function TripMap({
   onMapClick,
   onPoiSelected,
   onPoiError,
+  onBoundsChanged,
+  myLocation,
 }: TripMapProps) {
   // 載入 places library（POI 點擊查詳情用）；同時確保 Place 建構子可用
   const placesLib = useMapsLibrary('places')
@@ -107,6 +111,7 @@ export default function TripMap({
         if (onMapClick && e.detail.latLng) onMapClick(e.detail.latLng)
       }}
     >
+      {onBoundsChanged && <BoundsReporter onChange={onBoundsChanged} />}
       <FitBounds coords={fit.coords} singleZoom={fit.singleZoom} />
       <DayRoutes stops={stops} transportByPair={transportByPair} visible={showRoute} />
 
@@ -181,6 +186,16 @@ export default function TripMap({
             </AdvancedMarker>
           ),
       )}
+      {myLocation && (
+        <AdvancedMarker
+          position={{ lat: myLocation.lat, lng: myLocation.lng }}
+          anchorPoint={AdvancedMarkerAnchorPoint.CENTER}
+          zIndex={30}
+        >
+          <MyLocationDot />
+        </AdvancedMarker>
+      )}
+      {myLocation && <PanToLocation lat={myLocation.lat} lng={myLocation.lng} nonce={myLocation.nonce} />}
     </GoogleMap>
   )
 }
@@ -208,6 +223,46 @@ function FitBounds({
     // coords 以 key 字串代表，故 exhaustive-deps 對 coords 的告警可忽略
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, key, singleZoom])
+  return null
+}
+
+function PanToLocation({ lat, lng, nonce }: { lat: number; lng: number; nonce: number }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!map || nonce === 0) return
+    map.panTo({ lat, lng })
+    if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
+  }, [map, nonce]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
+}
+
+function MyLocationDot() {
+  return (
+    <div
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: '50%',
+        background: '#4285F4',
+        border: '3px solid #fff',
+        boxShadow: '0 0 0 4px rgba(66,133,244,.25), 0 2px 6px rgba(0,0,0,.2)',
+      }}
+    />
+  )
+}
+
+function BoundsReporter({ onChange }: { onChange: (b: google.maps.LatLngBoundsLiteral) => void }) {
+  const map = useMap()
+  const cbRef = useRef(onChange)
+  cbRef.current = onChange
+  useEffect(() => {
+    if (!map) return
+    const listener = map.addListener('idle', () => {
+      const b = map.getBounds()?.toJSON()
+      if (b) cbRef.current(b)
+    })
+    return () => listener.remove()
+  }, [map])
   return null
 }
 

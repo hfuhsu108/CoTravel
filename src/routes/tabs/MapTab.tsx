@@ -120,6 +120,12 @@ export default function MapTab() {
   const [bookmarkDetailItem, setBookmarkDetailItem] = useState<Item | null>(null)
   // 功能 2：加入書籤前的暫存地點（先選清單再 addItem，像 Google 地圖）
   const [pendingBookmark, setPendingBookmark] = useState<PickedPlace | null>(null)
+  // 搜尋偏好範圍：開搜尋時 snapshot 當下地圖邊界，整個搜尋 session 固定（避免輸入到一半範圍跳動）
+  const mapBoundsRef = useRef<google.maps.LatLngBoundsLiteral | null>(null)
+  const [searchBias, setSearchBias] = useState<google.maps.LatLngLiteral | google.maps.LatLngBoundsLiteral | undefined>(undefined)
+  // 當前定位
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number; nonce: number } | null>(null)
+  const [locating, setLocating] = useState(false)
 
   // 滑鼠：小位移即拖；觸控：須長按 0.2 秒（期間位移 <8px）才進入拖曳，避免手機輕滑列表誤觸發排序
   const sensors = useSensors(
@@ -423,6 +429,35 @@ export default function MapTab() {
     const withCoord = [...dayItems, ...bookmarks].find((i) => i.lat != null && i.lng != null)
     return withCoord ? { lat: withCoord.lat as number, lng: withCoord.lng as number } : undefined
   }, [dayItems, bookmarks])
+
+  function openSearch(state: NonNullable<SearchState>) {
+    setSearchBias(mapBoundsRef.current ?? mapBias)
+    setSearch(state)
+  }
+
+  function handleLocateMe() {
+    if (!navigator.geolocation) {
+      setError('此裝置不支援定位功能')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, nonce: Date.now() })
+        setLocating(false)
+      },
+      (err) => {
+        const msgs: Record<number, string> = {
+          1: '定位權限被拒絕，請在瀏覽器設定中允許',
+          2: '無法取得位置資訊',
+          3: '定位逾時，請重試',
+        }
+        setError(msgs[err.code] ?? '定位失敗')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
 
   function stationLabelFor(item: Item): string | null {
     if (item.status !== 'scheduled' || !item.day_id) return null
@@ -836,6 +871,8 @@ export default function MapTab() {
                 setSelectedItemId(null)
               }}
               onPoiError={(m) => setError(m)}
+              onBoundsChanged={(b) => { mapBoundsRef.current = b }}
+              myLocation={myLocation}
             />
 
             {trip && (
@@ -865,6 +902,22 @@ export default function MapTab() {
                 />
               </div>
             </div>
+
+            {/* 定位按鈕 */}
+            <button
+              type="button"
+              onClick={handleLocateMe}
+              disabled={locating}
+              aria-label="定位目前位置"
+              className="absolute right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-surface shadow-3 active:scale-95 disabled:opacity-60"
+              style={{ top: 'calc(env(safe-area-inset-top) + 100px)' }}
+            >
+              {locating ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              ) : (
+                <Icon name="nav" size={20} className={myLocation ? 'text-primary' : 'text-ink-2'} />
+              )}
+            </button>
 
             {/* 圈區域模式：頂部提示 */}
             {areaMode && (
@@ -913,7 +966,7 @@ export default function MapTab() {
             <div className="absolute inset-x-4 bottom-6 z-20 flex gap-[9px]">
               <button
                 type="button"
-                onClick={() => setSearch({ mode: 'add' })}
+                onClick={() => openSearch({ mode: 'add' })}
                 className="flex flex-1 items-center gap-[9px] rounded-lg bg-surface px-[14px] py-[12px] text-left shadow-3"
               >
                 <Icon name="search" size={19} className="text-ink-3" />
@@ -979,7 +1032,7 @@ export default function MapTab() {
             onMoveDay={(dayId) => handleMoveDay(detailItem.id, dayId)}
             onToggleCandidate={handleToggleCandidate}
             onRemoveCandidate={handleRemoveCandidate}
-            onAddCandidate={() => setSearch({ mode: 'candidate', targetItemId: detailItem.id })}
+            onAddCandidate={() => openSearch({ mode: 'candidate', targetItemId: detailItem.id })}
           />
         )}
 
@@ -1003,7 +1056,7 @@ export default function MapTab() {
           <PlaceSearch
             title={search.mode === 'candidate' ? '新增候選店家' : '搜尋景點'}
             mode={search.mode}
-            bias={mapBias}
+            bias={searchBias}
             onClose={() => setSearch(null)}
             onPick={handlePick}
           />
@@ -1033,7 +1086,7 @@ export default function MapTab() {
             onClose={() => setBookmarkOpen(false)}
             onAddBookmark={() => {
               setBookmarkOpen(false)
-              setSearch({ mode: 'add' })
+              openSearch({ mode: 'add' })
             }}
             onOpenDetail={(item) => setBookmarkDetailItem(item)}
             onScheduleToDay={(item, dayId) => handleMoveDay(item.id, dayId)}
@@ -1084,7 +1137,7 @@ export default function MapTab() {
                   type="button"
                   onClick={() => {
                     setAddMenuOpen(false)
-                    setSearch({ mode: 'add' })
+                    openSearch({ mode: 'add' })
                   }}
                   className="flex items-center gap-3 rounded-lg border border-line bg-surface p-4 text-left shadow-1 active:scale-[0.99]"
                 >

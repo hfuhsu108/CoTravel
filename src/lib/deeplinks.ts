@@ -35,3 +35,12 @@ export function uberRideUrl(lat: number, lng: number, name: string): string {
 export function grabUrl(): string {
   return 'https://www.grab.com/'
 }
+
+// Google 地圖：以座標開啟（有 place_id 則精準對到該地點，避免大型場所導到形心）。
+// 詳情頁、書籤詳情、地圖小卡的「在 Google 地圖開啟」共用此格式，單點維護。
+export function googleMapsPlaceUrl(lat: number, lng: number, placeId?: string | null): string {
+  const base = 'https://www.google.com/maps/search/?api=1'
+  const q = `&query=${lat},${lng}`
+  const pid = placeId ? `&query_place_id=${placeId}` : ''
+  return `${base}${q}${pid}`
+}

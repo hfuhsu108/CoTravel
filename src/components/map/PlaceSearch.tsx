@@ -20,7 +20,7 @@ interface PlaceSearchProps {
   mode: 'add' | 'candidate' | 'pick'
   onClose: () => void
   onPick: (place: PickedPlace, kind: PickKind) => Promise<void> | void
-  bias?: google.maps.LatLngLiteral // 以地圖中心為偏好（提升在地相關性）
+  bias?: google.maps.LatLngLiteral | google.maps.LatLngBoundsLiteral
 }
 
 // Google 地點搜尋（新版 Places API：AutocompleteSuggestion + Place.fetchFields）。

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { useMapsLibrary } from '@vis.gl/react-google-maps'
+import { useState } from 'react'
 import type { Day, Document, Item } from '../../../lib/types'
 import { displayName, type ItemPatch } from '../../../lib/itinerary'
-import { kkdaySearchUrl, klookSearchUrl, openExternal } from '../../../lib/deeplinks'
+import { googleMapsPlaceUrl, kkdaySearchUrl, klookSearchUrl, openExternal } from '../../../lib/deeplinks'
+import { useLivePlaceDetails } from '../../../lib/useLivePlaceDetails'
 import { formatDurationZh, tzForCoords, tzOffsetLabel, tzLabel } from '../../../lib/time'
 import { formatMin, parseHHMM, type EffTime } from '../../../lib/schedule'
 import Icon from '../../Icon'
@@ -27,19 +27,6 @@ interface PlaceDetailProps {
   onRemove: () => Promise<void>
   onDuplicate: () => Promise<void>
   onMoveDay: (dayId: string) => Promise<void>
-}
-
-interface LiveDetails {
-  rating: number | null
-  address: string | null
-  hoursToday: string | null
-}
-
-// 週幾營業字串以 Monday 起算，對應 JS getDay()（Sun=0）
-function todayHours(descs: string[] | null | undefined): string | null {
-  if (!descs || descs.length === 0) return null
-  const idx = (new Date().getDay() + 6) % 7
-  return descs[idx] ?? null
 }
 
 // 造訪時間是否落在營業時間外（功能 8；best-effort 解析 Google 中文營業字串，無法解析則不警告）
@@ -76,14 +63,12 @@ export default function PlaceDetail({
   onDuplicate,
   onMoveDay,
 }: PlaceDetailProps) {
-  const places = useMapsLibrary('places')
-
   // 功能 5：地點時區（存的優先，否則由座標推）。與旅程主時區不同 → 造訪時間旁標時區，避免跨國誤判。
   const itemTz = item.timezone ?? tzForCoords(item.lat, item.lng)
   const itemDate = days.find((d) => d.id === item.day_id)?.date
   const showTz = !!itemTz && !!tripTz && itemTz !== tripTz
 
-  const [live, setLive] = useState<LiveDetails | null>(null)
+  const live = useLivePlaceDetails(item.google_place_id)
   const [time, setTime] = useState(item.scheduled_time?.slice(0, 5) ?? '') // 抵達
   const [stay, setStay] = useState(item.stay_minutes != null ? String(item.stay_minutes) : '')
   const [departure, setDeparture] = useState(item.departure_time?.slice(0, 5) ?? '')
@@ -91,31 +76,6 @@ export default function PlaceDetail({
   const [aliasDraft, setAliasDraft] = useState('')
   const [notes, setNotes] = useState(item.notes ?? '')
   const [busy, setBusy] = useState(false)
-
-  // 即時抓 rating / 地址 / 今日營業（不持久化；抓不到不影響編輯）
-  useEffect(() => {
-    if (!places || !item.google_place_id) return
-    let active = true
-    ;(async () => {
-      try {
-        const place = new places.Place({ id: item.google_place_id as string })
-        await place.fetchFields({
-          fields: ['rating', 'formattedAddress', 'regularOpeningHours'],
-        })
-        if (!active) return
-        setLive({
-          rating: place.rating ?? null,
-          address: place.formattedAddress ?? null,
-          hoursToday: todayHours(place.regularOpeningHours?.weekdayDescriptions),
-        })
-      } catch (e) {
-        console.warn('[PlaceDetail] 即時地點資訊取得失敗', e)
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [places, item.google_place_id])
 
   async function saveIfChanged(patch: ItemPatch) {
     setBusy(true)
@@ -136,10 +96,7 @@ export default function PlaceDetail({
 
   function handleNavigate() {
     if (item.lat == null || item.lng == null) return
-    const base = 'https://www.google.com/maps/search/?api=1'
-    const q = `&query=${item.lat},${item.lng}`
-    const pid = item.google_place_id ? `&query_place_id=${item.google_place_id}` : ''
-    window.open(`${base}${q}${pid}`, '_blank', 'noopener,noreferrer')
+    openExternal(googleMapsPlaceUrl(item.lat, item.lng, item.google_place_id))
   }
 
   const timeInputClass =

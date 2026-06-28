@@ -63,11 +63,6 @@ export default function PlaceCard({ item, n, selected, eff, hasWarning, onSelect
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15.5px] font-extrabold">{displayName(item)}</div>
         <div className="mt-[3px] flex flex-wrap items-center gap-2">
-          {item.lodging_id && (
-            <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-[2px] text-[11px] font-bold text-primary-deep">
-              <Icon name="bed" size={12} /> 住宿
-            </span>
-          )}
           {timeLabel && (
             <span
               className={`num flex items-center gap-1 rounded-full px-2 py-[2px] text-xs font-bold ${
@@ -87,6 +82,12 @@ export default function PlaceCard({ item, n, selected, eff, hasWarning, onSelect
               title={eff?.stayDefault ? '未設定停留，預設以 1 小時計算' : undefined}
             >
               {stayLabel}
+            </span>
+          )}
+          {/* 住宿膠囊移到時間/停留之後，讓抵達時間 chip 在各卡片左緣對齊 */}
+          {item.lodging_id && (
+            <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-[2px] text-[11px] font-bold text-primary-deep">
+              <Icon name="bed" size={12} /> 住宿
             </span>
           )}
           {hasWarning && (
