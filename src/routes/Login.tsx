@@ -17,7 +17,7 @@ type Mode = null | 'email' | 'pair' | 'join'
 
 // 畫面 0：登入 / 配對。Google 為主，Email+密碼為後備；配對採旅程層級邀請碼。
 export default function Login() {
-  const { session, loading, signInWithGoogle, signInWithPassword, signUp } = useAuth()
+  const { session, loading, offlineUser, signInWithGoogle, signInWithPassword, signUp } = useAuth()
 
   const [mode, setMode] = useState<Mode>(null)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
@@ -31,8 +31,8 @@ export default function Login() {
   if (loading) {
     return <div className="flex h-full items-center justify-center text-ink-3">載入中…</div>
   }
-  // 已登入（含 OAuth 回跳完成）→ 進旅程列表
-  if (session) return <Navigate to="/trips" replace />
+  // 已登入（含 OAuth 回跳完成）或離線授權 → 進旅程列表
+  if (session || offlineUser) return <Navigate to="/trips" replace />
 
   function go(next: Mode) {
     setErr(null)

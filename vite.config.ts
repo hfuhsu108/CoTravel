@@ -94,6 +94,27 @@ export default defineConfig(({ command }) => {
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
           // Web Push：注入自訂 push event handler（push-handler.js 在 public/ 下）
           importScripts: ['push-handler.js'],
+          // 字體走 Google Fonts CDN（不進 precache），離線時以 runtime 快取回退，
+          // 否則落地無網路會退成系統字型（Noto Sans TC / Quicksand 失效）
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'google-fonts-css',
+                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-webfonts',
+                expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
         },
         devOptions: {
           enabled: false,

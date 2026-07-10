@@ -1,12 +1,12 @@
 {
   "name": "cotravel",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --base /CoTravel/",
     "lint": "tsc -b --noEmit",
     "gen:icons": "node scripts/gen-icons.mjs"
   },

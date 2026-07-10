@@ -17,7 +17,8 @@ interface TripCardProps {
   meId: string
   big?: boolean
   onOpen: (trip: TripWithMembers) => void
-  onMenu: (trip: TripWithMembers) => void
+  // 可選：離線唯讀模式不傳，整顆三點選單鈕不渲染
+  onMenu?: (trip: TripWithMembers) => void
 }
 
 export default function TripCard({ trip, meId, big = false, onOpen, onMenu }: TripCardProps) {
@@ -106,14 +107,16 @@ export default function TripCard({ trip, meId, big = false, onOpen, onMenu }: Tr
             {badge}
           </span>
         )}
-        <button
-          type="button"
-          onClick={() => onMenu(trip)}
-          aria-label="行程選單"
-          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-white/85 text-ink-2 shadow-1 active:scale-90"
-        >
-          <Icon name="more" size={18} fill />
-        </button>
+        {onMenu && (
+          <button
+            type="button"
+            onClick={() => onMenu(trip)}
+            aria-label="行程選單"
+            className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-white/85 text-ink-2 shadow-1 active:scale-90"
+          >
+            <Icon name="more" size={18} fill />
+          </button>
+        )}
       </div>
     </div>
   )

@@ -15,6 +15,7 @@ import { logActivity } from '../../lib/activity'
 import { useTripRealtime } from '../../lib/tripRealtime'
 import { cacheDocument, openDocument } from '../../lib/documentView'
 import { listCachedPaths, removeCached } from '../../lib/offline/docCache'
+import { saveDocsSnapshot, getDocsSnapshot } from '../../lib/offline/docsMetaCache'
 import { useOnline } from '../../lib/useOnline'
 import { errMessage } from '../../lib/errMessage'
 import type { Document, DocumentCategory, Lodging, TripMemberWithProfile } from '../../lib/types'
@@ -85,8 +86,33 @@ export default function DocsTab() {
         setDocuments(docs)
         setLinkCounts(counts)
         setCachedPaths(new Set(cached))
+        // 留一份中繼資料快照，離線開文件匣時還原清單（已下載的檔案才打得開）
+        void saveDocsSnapshot(tripId, {
+          members: trip.members,
+          tripStart: trip.start_date,
+          tripEnd: trip.end_date,
+          documents: docs,
+          linkCounts: [...counts.entries()],
+          cachedAt: new Date().toISOString(),
+        })
       } catch (e) {
-        if (active) setError(errMessage(e))
+        // 網路失敗：用快照唯讀還原清單；已快取路徑是本機狀態，另行讀取
+        // （上面 Promise.all 整包 reject，cached 沒拿到）
+        const snap = await getDocsSnapshot(tripId)
+        if (active && snap) {
+          setMembers(snap.members)
+          setTripStart(snap.tripStart)
+          setTripEnd(snap.tripEnd)
+          setDocuments(snap.documents)
+          setLinkCounts(new Map(snap.linkCounts))
+          try {
+            setCachedPaths(new Set(await listCachedPaths()))
+          } catch {
+            // 讀本機快取清單失敗不致命，未快取檔案照樣灰階
+          }
+        } else if (active) {
+          setError(errMessage(e))
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -397,16 +423,18 @@ export default function DocsTab() {
           <div className="mb-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-[15px] font-bold">航班</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingFlight(null)
-                  setFlightFormOpen(true)
-                }}
-                className="inline-flex items-center gap-1 rounded-full bg-primary px-[14px] py-2 text-[13px] font-bold text-white active:scale-95"
-              >
-                <Icon name="plus" size={15} /> 新增航班
-              </button>
+              {!effectiveOffline && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingFlight(null)
+                    setFlightFormOpen(true)
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary px-[14px] py-2 text-[13px] font-bold text-white active:scale-95"
+                >
+                  <Icon name="plus" size={15} /> 新增航班
+                </button>
+              )}
             </div>
             {flights.length === 0 ? (
               <p className="rounded-lg border border-line bg-surface-2 px-3 py-4 text-center text-[13px] leading-[1.5] text-ink-3">
@@ -442,16 +470,18 @@ export default function DocsTab() {
           <div className="mb-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-[15px] font-bold">住宿</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingLodging(null)
-                  setLodgingFormOpen(true)
-                }}
-                className="inline-flex items-center gap-1 rounded-full bg-primary px-[14px] py-2 text-[13px] font-bold text-white active:scale-95"
-              >
-                <Icon name="plus" size={15} /> 新增住宿
-              </button>
+              {!effectiveOffline && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingLodging(null)
+                    setLodgingFormOpen(true)
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary px-[14px] py-2 text-[13px] font-bold text-white active:scale-95"
+                >
+                  <Icon name="plus" size={15} /> 新增住宿
+                </button>
+              )}
             </div>
             {lodgings.length === 0 ? (
               <p className="rounded-lg border border-line bg-surface-2 px-3 py-4 text-center text-[13px] leading-[1.5] text-ink-3">
@@ -494,13 +524,15 @@ export default function DocsTab() {
               <br />
               出國時一鍵就能找到。
             </p>
-            <button
-              type="button"
-              onClick={() => setUploadOpen(true)}
-              className="mt-2 inline-flex items-center gap-2 rounded-md bg-primary-soft px-5 py-[13px] font-bold text-primary-deep active:scale-[0.98]"
-            >
-              <Icon name="upload" size={17} /> 上傳文件
-            </button>
+            {!effectiveOffline && (
+              <button
+                type="button"
+                onClick={() => setUploadOpen(true)}
+                className="mt-2 inline-flex items-center gap-2 rounded-md bg-primary-soft px-5 py-[13px] font-bold text-primary-deep active:scale-[0.98]"
+              >
+                <Icon name="upload" size={17} /> 上傳文件
+              </button>
+            )}
           </div>
           )
         ) : (
@@ -532,15 +564,17 @@ export default function DocsTab() {
         )}
       </div>
 
-      {/* 右下上傳 FAB */}
-      <button
-        type="button"
-        onClick={() => setUploadOpen(true)}
-        aria-label="上傳文件"
-        className="absolute bottom-6 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-3 active:scale-95"
-      >
-        <Icon name="upload" size={24} />
-      </button>
+      {/* 右下上傳 FAB（離線唯讀模式隱藏） */}
+      {!effectiveOffline && (
+        <button
+          type="button"
+          onClick={() => setUploadOpen(true)}
+          aria-label="上傳文件"
+          className="absolute bottom-6 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-3 active:scale-95"
+        >
+          <Icon name="upload" size={24} />
+        </button>
+      )}
 
       {uploadOpen && (
         <UploadSheet

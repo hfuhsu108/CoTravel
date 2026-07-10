@@ -16,10 +16,11 @@ const tabs: { to: string; label: string; icon: IconName }[] = [
 
 export default function TripMain() {
   const { tripId = '' } = useParams()
-  const { user } = useAuth()
+  const { user, offlineUser } = useAuth()
 
   return (
-    <TripRealtimeProvider tripId={tripId} meId={user?.id ?? ''}>
+    // 離線時 user 為 null，退用 offlineUser.id 讓 realtime/頭像仍認得「我」
+    <TripRealtimeProvider tripId={tripId} meId={user?.id ?? offlineUser?.id ?? ''}>
       {/* 窄螢幕：上內容 + 下分頁列（col-reverse 讓 DOM 先放 nav 仍顯示在下）。
           寬螢幕：左側直立 nav rail + 右側內容（row）。 */}
       <div className="flex h-full flex-col-reverse lg:flex-row">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { listMyTrips, joinTripByCode } from '../lib/api'
 import { takePendingInvite } from '../lib/pendingInvite'
+import { saveTripsCache, loadTripsCache } from '../lib/offline/tripsCache'
 import { errMessage } from '../lib/errMessage'
 import { getTripStatus, startSortKey, endSortKey } from '../lib/tripStatus'
 import type { Trip, TripWithMembers } from '../lib/types'
@@ -22,14 +23,15 @@ type SheetKind = null | 'new' | 'join' | 'profile'
 
 // 畫面 1：旅程列表。依狀態分三組，FAB 建立、邀請碼加入；串 Supabase。
 export default function TripList() {
-  const { user } = useAuth()
+  const { user, offlineUser } = useAuth()
   const navigate = useNavigate()
-  const meId = user?.id ?? ''
+  const meId = user?.id ?? offlineUser?.id ?? ''
 
   const [trips, setTrips] = useState<TripWithMembers[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [offlineMode, setOfflineMode] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
   const [menuTrip, setMenuTrip] = useState<TripWithMembers | null>(null)
   const [editTrip, setEditTrip] = useState<TripWithMembers | null>(null)
@@ -46,7 +48,8 @@ export default function TripList() {
       setLoading(true)
       setError(null)
       try {
-        const pending = takePendingInvite()
+        // 離線時別 take：邀請碼會被一次性消耗掉，但兌換必失敗，碼就白丟了
+        const pending = navigator.onLine ? takePendingInvite() : null
         if (pending) {
           try {
             await joinTripByCode(pending)
@@ -56,9 +59,21 @@ export default function TripList() {
           }
         }
         const data = await listMyTrips()
-        if (active) setTrips(data)
+        if (active) {
+          setTrips(data)
+          setOfflineMode(false)
+          saveTripsCache(data)
+        }
       } catch (e) {
-        if (active) setError(errMessage(e))
+        // 網路失敗：有上次成功載入的快照就進唯讀離線模式，沒有才顯示錯誤（維持原行為）
+        const cache = loadTripsCache()
+        if (active && cache) {
+          setTrips(cache.trips)
+          setOfflineMode(true)
+          setNotice('離線模式：顯示上次同步的旅程，內容可能不是最新')
+        } else if (active) {
+          setError(errMessage(e))
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -81,8 +96,13 @@ export default function TripList() {
   // 我的頭像（appbar）取自帳號 metadata
   const meta = (user?.user_metadata ?? {}) as Record<string, unknown>
   const meName =
-    (meta.full_name as string) || (meta.name as string) || user?.email?.split('@')[0] || '我'
-  const meAvatar = (meta.avatar_url as string) || (meta.picture as string) || null
+    (meta.full_name as string) ||
+    (meta.name as string) ||
+    user?.email?.split('@')[0] ||
+    offlineUser?.name ||
+    '我'
+  const meAvatar =
+    (meta.avatar_url as string) || (meta.picture as string) || offlineUser?.avatarUrl || null
 
   const ongoing = trips.filter((t) => getTripStatus(t) === 'ongoing')
   const upcoming = trips
@@ -104,7 +124,11 @@ export default function TripList() {
           <Logo size={32} />
           <h1 className="text-[22px] font-bold tracking-[-0.01em]">同行</h1>
         </div>
-        <button type="button" onClick={() => setSheet('profile')} aria-label="個人檔案">
+        <button
+          type="button"
+          onClick={() => !offlineMode && setSheet('profile')}
+          aria-label="個人檔案"
+        >
           <Avatar name={meName} avatarUrl={meAvatar} size={38} online />
         </button>
       </header>
@@ -144,12 +168,16 @@ export default function TripList() {
             <p className="max-w-[250px] text-[15px] leading-[1.55] text-ink-2">
               建立第一趟旅程，邀請另一半，一起在地圖上排出完美行程。
             </p>
-            <Button variant="primary" className="mt-3" onClick={() => setSheet('new')}>
-              <Icon name="plus" size={19} /> 建立第一趟旅程
-            </Button>
-            <Button variant="plain" className="text-ink-3" onClick={() => setSheet('join')}>
-              <Icon name="users" size={18} /> 用邀請碼加入
-            </Button>
+            {!offlineMode && (
+              <>
+                <Button variant="primary" className="mt-3" onClick={() => setSheet('new')}>
+                  <Icon name="plus" size={19} /> 建立第一趟旅程
+                </Button>
+                <Button variant="plain" className="text-ink-3" onClick={() => setSheet('join')}>
+                  <Icon name="users" size={18} /> 用邀請碼加入
+                </Button>
+              </>
+            )}
           </div>
         )}
 
@@ -160,7 +188,7 @@ export default function TripList() {
                 <GroupHeader icon="pin" title="進行中" count={ongoing.length} color="var(--ok)" />
                 {ongoing.map((t) => (
                   <div key={t.id} className="mb-[14px]">
-                    <TripCard trip={t} meId={meId} big onOpen={openTrip} onMenu={setMenuTrip} />
+                    <TripCard trip={t} meId={meId} big onOpen={openTrip} onMenu={offlineMode ? undefined : setMenuTrip} />
                   </div>
                 ))}
               </>
@@ -176,7 +204,7 @@ export default function TripList() {
                 />
                 <div className="flex flex-col gap-[14px]">
                   {upcoming.map((t) => (
-                    <TripCard key={t.id} trip={t} meId={meId} onOpen={openTrip} onMenu={setMenuTrip} />
+                    <TripCard key={t.id} trip={t} meId={meId} onOpen={openTrip} onMenu={offlineMode ? undefined : setMenuTrip} />
                   ))}
                 </div>
               </>
@@ -197,7 +225,7 @@ export default function TripList() {
                   <div className="flex flex-col gap-[14px]">
                     {past.map((t) => (
                       <div key={t.id} style={{ opacity: 0.82 }}>
-                        <TripCard trip={t} meId={meId} onOpen={openTrip} onMenu={setMenuTrip} />
+                        <TripCard trip={t} meId={meId} onOpen={openTrip} onMenu={offlineMode ? undefined : setMenuTrip} />
                       </div>
                     ))}
                   </div>
@@ -205,18 +233,20 @@ export default function TripList() {
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => setSheet('join')}
-              className="mx-auto mt-7 block text-[13px] font-bold text-ink-3"
-            >
-              有邀請碼？加入另一半的旅程
-            </button>
+            {!offlineMode && (
+              <button
+                type="button"
+                onClick={() => setSheet('join')}
+                className="mx-auto mt-7 block text-[13px] font-bold text-ink-3"
+              >
+                有邀請碼？加入另一半的旅程
+              </button>
+            )}
           </>
         )}
       </div>
 
-      {!isEmpty && !loading && (
+      {!isEmpty && !loading && !offlineMode && (
         <button
           type="button"
           onClick={() => setSheet('new')}
