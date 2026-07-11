@@ -1,5 +1,5 @@
 // 改動紀錄（階段 6）：寫入/讀取 activity_log，供「對方改動通知」（紅點 + banner + 最近改動清單）。
-// 行李清單不記（勾選高頻會洗版，僅靠 Realtime 同步進度）——見 docs/03。
+// 行李勾選不記（高頻會洗版，僅靠 Realtime 同步進度）；發起人代編旅伴清單的增刪會記——見 docs/03。
 import { supabase } from './supabase'
 import type { ActivityEntry } from './types'
 
@@ -14,6 +14,8 @@ export type ActivityAction =
   | 'doc_remove'
   | 'reminder_set'
   | 'reminder_remove'
+  | 'packing_add'
+  | 'packing_remove'
 
 // fire-and-forget：通知紀錄失敗不應阻斷主要操作（主操作已成功），只留 console 線索。
 // target_summary 存「不含人名的完整動作句」（如 把「梅田藍天大廈」加到 Day 2），

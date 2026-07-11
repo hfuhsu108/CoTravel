@@ -10,7 +10,7 @@ import {
 import { supabase } from './supabase'
 import { getTripWithMembers } from './api'
 import { getLatestForeignActivity } from './activity'
-import type { ActivityEntry, TripMemberWithProfile } from './types'
+import type { ActivityEntry, TripMemberWithProfile, TripWithMembers } from './types'
 
 // 即時同步（階段 6）：單一 channel 訂閱該 trip 的資料表變更。
 // 鐵律：事件 payload 一律不讀內容、只當「該表變了」的訊號 → bump tick，
@@ -56,6 +56,8 @@ const ZERO_TICKS: Record<TableKey, number> = {
 export interface TripRealtimeValue {
   // 各表變更遞增 counter：分頁 useEffect 訂閱後靜默 refetch
   ticks: Record<TableKey, number>
+  // 旅程本體（Provider 載一次；行李分頁判斷「我是否發起人」用 created_by）
+  trip: TripWithMembers | null
   // 旅程成員（Provider 載一次，banner / 通知清單 / 行李分頁共用）
   members: TripMemberWithProfile[]
   // 鈴鐺紅點：有比 lastSeen 新、且非自己的 activity
@@ -82,6 +84,7 @@ export function TripRealtimeProvider({
   children: ReactNode
 }) {
   const [ticks, setTicks] = useState<Record<TableKey, number>>(ZERO_TICKS)
+  const [trip, setTrip] = useState<TripWithMembers | null>(null)
   const [members, setMembers] = useState<TripMemberWithProfile[]>([])
   const [unread, setUnread] = useState(false)
   const [latest, setLatest] = useState<ActivityEntry | null>(null)
@@ -115,8 +118,11 @@ export function TripRealtimeProvider({
   useEffect(() => {
     let active = true
     getTripWithMembers(tripId)
-      .then((trip) => {
-        if (active && trip) setMembers(trip.members)
+      .then((t) => {
+        if (active && t) {
+          setTrip(t)
+          setMembers(t.members)
+        }
       })
       .catch((e) => console.warn('[realtime] 載入成員失敗', e))
     return () => {
@@ -183,7 +189,7 @@ export function TripRealtimeProvider({
 
   const dismissBanner = useCallback(() => setLatest(null), [])
 
-  const value: TripRealtimeValue = { ticks, members, unread, latest, markSeen, dismissBanner }
+  const value: TripRealtimeValue = { ticks, trip, members, unread, latest, markSeen, dismissBanner }
   return <TripRealtimeContext.Provider value={value}>{children}</TripRealtimeContext.Provider>
 }
 

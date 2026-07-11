@@ -310,6 +310,20 @@ as $$
   );
 $$;
 
+-- 目前使用者是否為某 trip 的發起人（行李「發起人可代編旅伴清單」等權限用）
+create or replace function is_trip_creator(p_trip_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from trips
+    where id = p_trip_id and created_by = auth.uid()
+  );
+$$;
+
 -- 目前使用者是否與 p_user 同屬某趟（給 profiles 互看頭像/暱稱用）
 create or replace function is_co_member(p_user uuid)
 returns boolean
@@ -561,13 +575,15 @@ create policy "members rw area_candidates" on area_candidates
     exists (select 1 from items i where i.id = area_candidates.item_id and is_trip_member(i.trip_id))
   );
 
--- packing_items：成員互看，但只能改自己的
+-- packing_items：成員互看；本人或旅程發起人可寫（發起人可代編旅伴清單）
 drop policy if exists "members read packing" on packing_items;
 create policy "members read packing" on packing_items
   for select using (is_trip_member(trip_id));
 drop policy if exists "owner write packing" on packing_items;
-create policy "owner write packing" on packing_items
-  for all using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid());
+drop policy if exists "owner or creator write packing" on packing_items;
+create policy "owner or creator write packing" on packing_items
+  for all using (owner_user_id = auth.uid() or is_trip_creator(trip_id))
+  with check (owner_user_id = auth.uid() or is_trip_creator(trip_id));
 
 -- activity_log：成員可讀；只能以自己名義寫入
 drop policy if exists "members read activity" on activity_log;

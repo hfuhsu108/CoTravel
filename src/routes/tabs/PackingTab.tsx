@@ -9,23 +9,26 @@ import {
   setPackingPacked,
 } from '../../lib/packing'
 import { ensureDefaultCategories, listCategories } from '../../lib/packingCategories'
+import { logActivity } from '../../lib/activity'
 import { errMessage } from '../../lib/errMessage'
 import type { PackingCategory, PackingItem } from '../../lib/types'
 import Icon from '../../components/Icon'
 import Avatar from '../../components/Avatar'
 import AddPackSheet from '../../components/packing/AddPackSheet'
 
-// 畫面 5 行李清單：依個人分的清單 + 勾選 + 完成度。兩人互看，對方唯讀（UI 擋 + RLS 擋）。
-// 行李變動不寫 activity_log（勾選高頻會洗版），靠 Realtime tick 即時同步對方進度。
+// 畫面 5 行李清單：依個人分的清單 + 勾選 + 完成度。兩人互看；旅伴視角唯讀，
+// 但「旅程發起人」可代編旅伴清單（UI 與 RLS 同步放行，見 schema "owner or creator write packing"）。
+// 勾選不寫 activity_log（高頻會洗版）；發起人代編的增刪會寫（對方值得知道），其餘靠 Realtime tick 同步。
 // 分類為「各自管理」：分組依 category_id → 分類名（由 packing_categories 載入）。
 export default function PackingTab() {
   const { tripId = '' } = useParams()
   const { user } = useAuth()
   const meId = user?.id ?? ''
-  const { members, ticks } = useTripRealtime()
+  const { trip, members, ticks } = useTripRealtime()
 
   const me = members.find((m) => m.user_id === meId)
   const partner = members.find((m) => m.user_id !== meId)
+  const amCreator = trip?.created_by === meId
 
   const [who, setWho] = useState<'me' | 'partner'>('me')
   const [list, setList] = useState<PackingItem[]>([])
@@ -89,6 +92,8 @@ export default function PackingTab() {
   }, [tripId, meId, partner?.user_id, catTick])
 
   const mine = who === 'me'
+  // 自己的清單一定可編；旅伴的只有發起人可代編
+  const canEdit = mine || amCreator
   const viewedUserId = mine ? meId : (partner?.user_id ?? '')
   const viewed = useMemo(
     () => list.filter((p) => p.owner_user_id === viewedUserId),
@@ -127,7 +132,7 @@ export default function PackingTab() {
   const partnerName = partner?.profile?.display_name ?? '夥伴'
 
   async function handleToggle(item: PackingItem) {
-    if (!mine) return
+    if (!canEdit) return
     const next = !item.is_packed
     setList((ls) => ls.map((p) => (p.id === item.id ? { ...p, is_packed: next } : p)))
     try {
@@ -143,6 +148,10 @@ export default function PackingTab() {
     setList((ls) => ls.filter((p) => p.id !== item.id))
     try {
       await removePackingItem(item.id)
+      // 代編旅伴清單的增刪要讓對方知道（自己清單的變動照舊不記）
+      if (!mine) {
+        logActivity(tripId, meId, 'packing_remove', `幫 ${partnerName} 刪了行李「${item.name}」`)
+      }
     } catch (e) {
       setList(prev)
       setError(errMessage(e))
@@ -152,11 +161,14 @@ export default function PackingTab() {
   async function handleAdd(name: string, categoryId: string | null) {
     const created = await addPackingItem({
       trip_id: tripId,
-      owner_user_id: meId,
+      owner_user_id: viewedUserId,
       name,
       category_id: categoryId,
     })
     setList((ls) => [...ls, created])
+    if (!mine) {
+      logActivity(tripId, meId, 'packing_add', `幫 ${partnerName} 加了行李「${name}」`)
+    }
   }
 
   if (loading) {
@@ -232,7 +244,7 @@ export default function PackingTab() {
               </span>
               {!mine && (
                 <span className="rounded-full bg-line px-[9px] py-[3px] text-[11px] font-bold text-ink-2">
-                  唯讀
+                  {amCreator ? '可代為編輯' : '唯讀'}
                 </span>
               )}
             </div>
@@ -290,14 +302,14 @@ export default function PackingTab() {
                       type="button"
                       onClick={() => handleToggle(item)}
                       aria-label={item.is_packed ? '取消打包' : '標記已打包'}
-                      disabled={!mine}
+                      disabled={!canEdit}
                       className={`flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] border-2 transition ${
                         item.is_packed
                           ? mine
                             ? 'border-primary bg-primary text-white'
                             : 'border-pink bg-pink text-white opacity-[0.85]'
                           : `border-line-strong bg-surface ${mine ? '' : 'opacity-[0.85]'}`
-                      } ${mine ? '' : 'cursor-default'}`}
+                      } ${canEdit ? '' : 'cursor-default'}`}
                     >
                       {item.is_packed && <Icon name="check" size={15} />}
                     </button>
@@ -310,7 +322,7 @@ export default function PackingTab() {
                     >
                       {item.name}
                     </span>
-                    {mine && (
+                    {canEdit && (
                       <button
                         type="button"
                         onClick={() => handleRemove(item)}
@@ -329,13 +341,16 @@ export default function PackingTab() {
 
         {!mine && viewed.length > 0 && (
           <div className="flex items-center justify-center gap-[6px] pb-[14px] pt-[6px] text-[13px] text-ink-3">
-            <Icon name="users" size={16} /> 這是 {partnerName} 的清單，你可以看到進度但不能修改
+            <Icon name="users" size={16} />{' '}
+            {amCreator
+              ? `這是 ${partnerName} 的清單，你是發起人，可以代為編輯`
+              : `這是 ${partnerName} 的清單，你可以看到進度但不能修改`}
           </div>
         )}
       </div>
 
-      {/* 右下新增 FAB（僅自己視角） */}
-      {mine && (
+      {/* 右下新增 FAB（自己視角；旅伴視角限發起人） */}
+      {canEdit && (
         <button
           type="button"
           onClick={() => setAddOpen(true)}
@@ -348,7 +363,7 @@ export default function PackingTab() {
 
       {addOpen && (
         <AddPackSheet
-          categories={catsByOwner[meId] ?? []}
+          categories={catsByOwner[viewedUserId] ?? []}
           onAdd={handleAdd}
           onClose={() => setAddOpen(false)}
         />
