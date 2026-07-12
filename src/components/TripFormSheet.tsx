@@ -6,7 +6,9 @@ import Field, { inputClassName } from './ui/Field'
 import Icon from './Icon'
 import InviteCodeCard from './InviteCodeCard'
 import PlaceSearch, { type PickedPlace } from './map/PlaceSearch'
-import { createTrip, updateTrip } from '../lib/api'
+import { createTrip } from '../lib/api'
+import { saveTripWithDaySync } from '../lib/tripDates'
+import { useAuth } from '../lib/auth'
 import { errMessage } from '../lib/errMessage'
 import { env } from '../lib/env'
 import type { Trip } from '../lib/types'
@@ -21,6 +23,7 @@ interface TripFormSheetProps {
 // 建立 / 修改旅程共用表單。目的地改用 Google 地點搜尋選定並存座標（功能 3 的地圖預設範圍退路）。
 // 建立模式成功後切到「顯示邀請碼」階段；修改模式存檔即關閉。
 export default function TripFormSheet({ mode, trip, onClose, onSaved }: TripFormSheetProps) {
+  const { user } = useAuth()
   const [name, setName] = useState(trip?.name ?? '')
   const [destination, setDestination] = useState(trip?.destination ?? '')
   const [destLat, setDestLat] = useState<number | null>(trip?.dest_lat ?? null)
@@ -66,8 +69,10 @@ export default function TripFormSheet({ mode, trip, onClose, onSaved }: TripForm
         onSaved(t)
         setCreated(t) // 切到顯示邀請碼階段
       } else if (trip) {
-        const t = await updateTrip(trip.id, payload)
-        onSaved(t)
+        // 日期有變會同步 days（縮短天數時彈確認，取消則不做任何變更）
+        const result = await saveTripWithDaySync(trip, payload, user?.id ?? null)
+        if (!result) return
+        onSaved(result.trip)
         onClose()
       }
     } catch (e) {

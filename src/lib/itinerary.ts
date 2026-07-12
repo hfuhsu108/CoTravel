@@ -50,7 +50,7 @@ export async function listDays(tripId: string): Promise<Day[]> {
 }
 
 // 依 day_index 去重，保留每組第一筆（防禦：即使 DB 殘留重複日，UI 也只顯示一份且穩定）
-function dedupeDays(days: Day[]): Day[] {
+export function dedupeDays(days: Day[]): Day[] {
   const seen = new Set<number>()
   const out: Day[] = []
   for (const d of days) {

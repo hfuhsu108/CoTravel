@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import { useAuth } from '../../../lib/auth'
-import { deleteTrip, getTripWithMembers, leaveTrip, updateTrip } from '../../../lib/api'
+import { deleteTrip, getTripWithMembers, leaveTrip } from '../../../lib/api'
+import { saveTripWithDaySync } from '../../../lib/tripDates'
 import { env } from '../../../lib/env'
 import { errMessage } from '../../../lib/errMessage'
 import type { TripWithMembers } from '../../../lib/types'
@@ -25,6 +26,7 @@ export default function TripSettingsPanel() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [dateHint, setDateHint] = useState<string | null>(null) // 改期後的後續提醒
   const [danger, setDanger] = useState(false) // 危險操作二次確認
 
   // 編輯欄位
@@ -84,17 +86,28 @@ export default function TripSettingsPanel() {
     setBusy(true)
     setError(null)
     try {
-      const updated = await updateTrip(tripId, {
-        name: name.trim(),
-        destination: destination.trim() || null,
-        start_date: start || null,
-        end_date: end || null,
-        dest_lat: destLat,
-        dest_lng: destLng,
-        dest_place_id: destPlaceId,
-      })
-      setTrip((cur) => (cur ? { ...cur, ...updated } : cur))
+      const result = await saveTripWithDaySync(
+        { id: tripId, start_date: trip?.start_date ?? null, end_date: trip?.end_date ?? null },
+        {
+          name: name.trim(),
+          destination: destination.trim() || null,
+          start_date: start || null,
+          end_date: end || null,
+          dest_lat: destLat,
+          dest_lng: destLng,
+          dest_place_id: destPlaceId,
+        },
+        meId || null,
+      )
+      if (!result) return // 縮短天數的確認被取消，不做任何變更
+      setTrip((cur) => (cur ? { ...cur, ...result.trip } : cur))
       setSaved(true)
+      setDateHint(
+        result.synced
+          ? '每日行程已對應新日期。住宿與機票的日期不會自動更改，如需調整請到文件匣編輯（會自動重排到正確的天）。' +
+              (result.movedToBookmark > 0 ? `已有 ${result.movedToBookmark} 個項目退回書籤。` : '')
+          : null,
+      )
     } catch (e) {
       setError(errMessage(e))
     } finally {
@@ -222,6 +235,12 @@ export default function TripSettingsPanel() {
         <Button variant="primary" block disabled={busy} onClick={handleSave}>
           <Icon name="check" size={18} /> {busy ? '儲存中…' : saved ? '已儲存' : '儲存變更'}
         </Button>
+      )}
+      {dateHint && (
+        <p className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-[12.5px] leading-[1.6] text-ink-2">
+          <Icon name="info" size={13} className="mr-1 inline-block" />
+          {dateHint}
+        </p>
       )}
       {!isOwner && (
         <p className="mb-1 text-[12.5px] text-ink-3">只有建立者能修改旅程資料；你可以查看並使用邀請碼。</p>
