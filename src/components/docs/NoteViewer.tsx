@@ -70,7 +70,7 @@ export default function NoteViewer({ doc, onClose, onSaved, onDelete }: NoteView
 
   return (
     <Sheet onClose={onClose}>
-      <div className="flex max-h-full flex-col px-[22px] pb-[30px] pt-2">
+      <div className="flex min-h-0 flex-col px-[22px] pb-[30px] pt-2">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="break-words text-lg font-bold">

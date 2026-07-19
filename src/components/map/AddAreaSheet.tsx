@@ -49,7 +49,7 @@ export default function AddAreaSheet({ onClose, onConfirm }: AddAreaSheetProps) 
         </button>
       </div>
 
-      <div className="px-[22px] pb-[34px] pt-[18px]">
+      <div className="min-h-0 overflow-y-auto px-[22px] pb-[34px] pt-[18px]">
         <Field label="區域名稱">
           <input
             value={name}

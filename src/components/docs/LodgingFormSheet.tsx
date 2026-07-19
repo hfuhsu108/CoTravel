@@ -126,7 +126,8 @@ export default function LodgingFormSheet({
   return (
     <>
       <Sheet onClose={onClose}>
-        <div className="flex max-h-full flex-col px-[22px] pb-[30px] pt-2">
+        {/* min-h-0：包裝層也要能收縮，否則長內容把釘底按鈕擠出畫面（見 gotcha-sheet-flex-scroll） */}
+        <div className="flex min-h-0 flex-col px-[22px] pb-[30px] pt-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-xl font-bold">{isEdit ? '編輯住宿' : '新增住宿'}</h2>
             <button

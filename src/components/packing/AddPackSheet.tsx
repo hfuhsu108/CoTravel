@@ -42,7 +42,7 @@ export default function AddPackSheet({ categories, onAdd, onClose }: AddPackShee
           <Icon name="x" size={20} />
         </button>
       </div>
-      <form className="px-[22px] pt-4" onSubmit={handleSubmit}>
+      <form className="min-h-0 overflow-y-auto px-[22px] pt-4" onSubmit={handleSubmit}>
         <Field label="品名">
           <input
             className={inputClassName}

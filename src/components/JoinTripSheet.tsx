@@ -49,7 +49,7 @@ export default function JoinTripSheet({ onClose, onJoined }: JoinTripSheetProps)
           <Icon name="x" size={20} />
         </button>
       </div>
-      <div className="px-[22px] pb-[34px] pt-[18px]">
+      <div className="min-h-0 overflow-y-auto px-[22px] pb-[34px] pt-[18px]">
         <Field label="另一半給你的 6 碼邀請碼">
           <input
             value={code}

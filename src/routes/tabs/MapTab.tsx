@@ -1197,7 +1197,7 @@ export default function MapTab() {
         {/* 「＋ 加項目」動作選單 */}
         {addMenuOpen && (
           <Sheet onClose={() => setAddMenuOpen(false)}>
-            <div className="px-[22px] pb-[34px] pt-2">
+            <div className="min-h-0 overflow-y-auto px-[22px] pb-[34px] pt-2">
               <h2 className="mb-4 text-xl font-bold">加什麼？</h2>
               <div className="flex flex-col gap-3">
                 <button

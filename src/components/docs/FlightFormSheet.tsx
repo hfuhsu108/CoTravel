@@ -229,7 +229,9 @@ export default function FlightFormSheet({
   return (
     <>
       <Sheet onClose={onClose}>
-        <div className="flex max-h-full flex-col px-[22px] pb-[30px] pt-2">
+        {/* min-h-0：包裝層自己也是 dialog 的 flex 子項，不加就被長內容撐開、把釘底按鈕擠出畫面
+            （max-h-full 對 auto 高度父層無效，見 gotcha-sheet-flex-scroll） */}
+        <div className="flex min-h-0 flex-col px-[22px] pb-[30px] pt-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-xl font-bold">{isEdit ? '編輯航班' : '新增航班'}</h2>
             <button

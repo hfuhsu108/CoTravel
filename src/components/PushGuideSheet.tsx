@@ -97,7 +97,8 @@ export default function PushGuideSheet({ reason, env, onClose }: PushGuideSheetP
 
   return (
     <Sheet onClose={onClose}>
-      <div className="px-[22px] pb-[30px] pt-2">
+      {/* min-h-0 + overflow：小螢幕內容超過 sheet 高度時可捲，不會裁掉底部（見 gotcha-sheet-flex-scroll） */}
+      <div className="min-h-0 overflow-y-auto px-[22px] pb-[30px] pt-2">
         <h3 className="text-[18px] font-bold text-ink">{guide.title}</h3>
         <p className="mt-2 text-[13.5px] leading-[1.6] text-ink-2">{guide.intro}</p>
 

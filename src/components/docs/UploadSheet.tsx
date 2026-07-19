@@ -89,7 +89,7 @@ export default function UploadSheet({
 
   return (
     <Sheet onClose={onClose}>
-      <div className="flex max-h-full flex-col px-[22px] pb-[34px] pt-2">
+      <div className="flex min-h-0 flex-col px-[22px] pb-[34px] pt-2">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-xl font-bold">新增文件</h2>
           <button

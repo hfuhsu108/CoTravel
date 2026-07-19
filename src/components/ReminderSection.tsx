@@ -332,7 +332,7 @@ function AddReminderSheet({
   return (
     <Sheet onClose={onClose} stacked>
       {/* flex + min-h-0：欄位多，小螢幕（尤其鍵盤彈出）時中段可捲、儲存鈕不被推出畫面 */}
-      <div className="flex max-h-full flex-col px-[22px] pb-[28px] pt-2">
+      <div className="flex min-h-0 flex-col px-[22px] pb-[28px] pt-2">
         <h3 className="text-[17px] font-bold text-ink">新增提醒</h3>
 
         <div className="min-h-0 flex-1 overflow-y-auto">

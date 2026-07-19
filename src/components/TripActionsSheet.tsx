@@ -45,7 +45,7 @@ export default function TripActionsSheet({
 
   return (
     <Sheet onClose={onClose}>
-      <div className="px-[22px] pb-[34px] pt-2">
+      <div className="min-h-0 overflow-y-auto px-[22px] pb-[34px] pt-2">
         {view === 'menu' && (
           <>
             <h2 className="mb-1 text-xl font-bold">{trip.name}</h2>

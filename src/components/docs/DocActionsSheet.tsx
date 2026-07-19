@@ -102,7 +102,7 @@ export default function DocActionsSheet({
   return (
     <Sheet onClose={onClose}>
       {/* flex + min-h-0：小螢幕（尤其鍵盤彈出）內容超高時動作清單可捲動，「刪除文件」不會捲不到 */}
-      <div className="flex max-h-full flex-col px-[22px] pb-[34px] pt-2">
+      <div className="flex min-h-0 flex-col px-[22px] pb-[34px] pt-2">
         <div className="mb-1 flex items-start justify-between gap-3">
           <h2 className="min-w-0 break-words text-lg font-bold">{doc.file_name}</h2>
           <button
