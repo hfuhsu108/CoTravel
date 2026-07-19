@@ -143,6 +143,10 @@ export default function TransitDetail({
     setMode(m)
     setError(null)
     setRouteOptions([])
+    // 換模式即清掉上一個模式的統計/步驟，失敗時才不會錯誤訊息與舊資料並存誤導
+    setStats(null)
+    setChosenSteps(null)
+    setChosenPath(null)
     if (!fromCoord || !toCoord) {
       setError('起點或終點缺少座標，無法計算路線')
       return

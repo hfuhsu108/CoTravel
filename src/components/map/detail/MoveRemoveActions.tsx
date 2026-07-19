@@ -26,6 +26,8 @@ export default function MoveRemoveActions({
     setBusy(true)
     try {
       await fn()
+    } catch {
+      // 失敗已由 MapTab 錯誤浮層顯示；這裡吞掉避免 unhandled rejection
     } finally {
       setBusy(false)
     }

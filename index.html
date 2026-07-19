@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- interactive-widget：Android Chrome 108+ 鍵盤彈出時縮排版 viewport，釘底按鈕才不會被鍵盤蓋住（iOS 不支援此屬性） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#7a6cf0" />
     <!-- iOS 加到主畫面時以 standalone（無網址列）開啟；Android 由 manifest 的 display 控制 -->
     <meta name="mobile-web-app-capable" content="yes" />

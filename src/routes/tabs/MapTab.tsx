@@ -34,7 +34,13 @@ import {
   updateItem,
   type ItemPatch,
 } from '../../lib/itinerary'
-import { listTransports, removeTransport, upsertTransport } from '../../lib/transports'
+import {
+  danglingTransportIds,
+  listTransports,
+  removeTransport,
+  removeTransports,
+  upsertTransport,
+} from '../../lib/transports'
 import { ensureListsExist, listBookmarkLists } from '../../lib/bookmarkLists'
 import { logActivity } from '../../lib/activity'
 import { tzForCoords } from '../../lib/time'
@@ -187,6 +193,13 @@ export default function MapTab() {
       active = false
     }
   }, [tripId])
+
+  // mutation 錯誤浮層 4 秒自動消失（trip 未載入的全頁錯誤分支不受影響）
+  useEffect(() => {
+    if (!error || !trip) return
+    const t = window.setTimeout(() => setError(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [error, trip])
 
   // 階段 7：連線且資料就緒時，把整包行程寫入離線快取（初載與 realtime 刷新後皆更新）。
   useEffect(() => {
@@ -600,6 +613,8 @@ export default function MapTab() {
       setItems((its) => its.map((i) => (i.id === id ? updated : i)))
     } catch (e) {
       setError(errMessage(e))
+      // rethrow 讓詳情頁不把失敗當成功（樂觀合併、關閉頁面等都要 gate 在真的成功上）
+      throw e
     }
   }
 
@@ -618,6 +633,7 @@ export default function MapTab() {
       logActivity(tripId, meId, 'item_remove', `移除了「${name}」`)
     } catch (e) {
       setError(errMessage(e))
+      throw e
     }
   }
 
@@ -636,6 +652,7 @@ export default function MapTab() {
       }
     } catch (e) {
       setError(errMessage(e))
+      throw e
     }
   }
 
@@ -648,6 +665,20 @@ export default function MapTab() {
       logActivity(tripId, meId, 'item_add', `複製了「${displayName(item)}」`)
     } catch (e) {
       setError(errMessage(e))
+      throw e
+    }
+  }
+
+  // 重排/移動天後清掉不再相鄰的自動交通段（flight/custom 保留，見 danglingTransportIds）
+  async function cleanupDanglingTransports(nextItems: Item[]) {
+    const ids = danglingTransportIds(nextItems, transports)
+    if (ids.length === 0) return
+    try {
+      await removeTransports(ids)
+      setTransports((ts) => ts.filter((t) => !ids.includes(t.id)))
+    } catch (e) {
+      // 清理失敗不致命：殘留段在下次重排時會再嘗試
+      console.warn('[map] 清理失效交通失敗', e)
     }
   }
 
@@ -655,14 +686,17 @@ export default function MapTab() {
     try {
       const name = items.find((i) => i.id === id)?.name ?? '一個項目'
       const updated = await moveItemToDay(id, dayId)
-      setItems((its) => its.map((i) => (i.id === id ? updated : i)))
+      const nextItems = items.map((i) => (i.id === id ? updated : i))
+      setItems(nextItems)
       setCurrentDayId(dayId)
       setDetailItemId(null)
       setPopupItemId(null)
       setSelectedItemId(null)
       logActivity(tripId, meId, 'item_move', `把「${name}」移到 ${dayLabelOf(dayId)}`)
+      void cleanupDanglingTransports(nextItems)
     } catch (e) {
       setError(errMessage(e))
+      throw e
     }
   }
 
@@ -742,6 +776,7 @@ export default function MapTab() {
     })
     setItems((its) => [...its, newItem])
     setPendingAreaCenter(null)
+    setCollapsed(false) // 圈區域時收合了側欄，建好展開回來讓新卡片看得到
     logActivity(tripId, meId, 'item_add', `把區域「${data.name}」加到 ${dayLabelOf(currentDayId)}`)
   }
 
@@ -792,13 +827,18 @@ export default function MapTab() {
       if (oldIndex < 0 || newIndex < 0) return
       const newOrder = arrayMove(ids, oldIndex, newIndex)
       // 樂觀更新本地 order_index，再持久化
-      setItems((its) =>
-        its.map((i) => {
-          const pos = newOrder.indexOf(i.id)
-          return pos >= 0 ? { ...i, order_index: pos } : i
-        }),
-      )
-      void reorderItems(newOrder).catch((err) => setError(errMessage(err)))
+      const nextItems = items.map((i) => {
+        const pos = newOrder.indexOf(i.id)
+        return pos >= 0 ? { ...i, order_index: pos } : i
+      })
+      setItems(nextItems)
+      void reorderItems(newOrder)
+        .then(() => cleanupDanglingTransports(nextItems))
+        .catch((err) => {
+          setError(errMessage(err))
+          // 逐列更新可能只寫入一半：以 DB 為準重抓，不讓本地留著假順序
+          void reloadItinerary()
+        })
     }
   }
 
@@ -834,6 +874,20 @@ export default function MapTab() {
 
   return (
     <div className="absolute inset-0 flex bg-map-bg">
+      {/* mutation 失敗浮層：trip 載入後的 setError 在此顯示（載入失敗另有全頁分支）。點擊或 4 秒後消失。 */}
+      {error && (
+        <div
+          role="alert"
+          onClick={() => setError(null)}
+          className="absolute inset-x-[14px] z-[90] flex cursor-pointer items-center gap-[10px] rounded-2xl bg-[#2b2440] px-[14px] py-3 text-white shadow-3 animate-dropin"
+          style={{ top: 'calc(env(safe-area-inset-top) + 62px)' }}
+        >
+          <span className="flex-1 text-[13px] font-semibold leading-[1.4]">{error}</span>
+          <span className="flex opacity-70" aria-hidden="true">
+            <Icon name="x" size={16} />
+          </span>
+        </div>
+      )}
       <APIProvider apiKey={env.googleMapsApiKey} language="zh-TW" region="TW">
         {/* DnD 同時包住 DayTabs（放置目標）與 DaySidebar（拖拉來源），故置於雙欄之上 */}
         <DndContext
@@ -927,7 +981,14 @@ export default function MapTab() {
               >
                 <Icon name="layers" size={18} />
                 <span className="flex-1 text-[13px] font-semibold">點地圖選擇區域中心</span>
-                <button type="button" onClick={() => setAreaMode(false)} aria-label="取消">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAreaMode(false)
+                    setCollapsed(false) // 取消圈區域也把側欄展開回來
+                  }}
+                  aria-label="取消"
+                >
                   <Icon name="x" size={16} />
                 </button>
               </div>
@@ -1064,7 +1125,13 @@ export default function MapTab() {
 
         {/* 圈區域設定 sheet */}
         {pendingAreaCenter && (
-          <AddAreaSheet onClose={() => setPendingAreaCenter(null)} onConfirm={handleConfirmArea} />
+          <AddAreaSheet
+            onClose={() => {
+              setPendingAreaCenter(null)
+              setCollapsed(false) // 放棄建立也把側欄展開回來
+            }}
+            onConfirm={handleConfirmArea}
+          />
         )}
 
         {/* 鈴鐺：最近改動清單 */}

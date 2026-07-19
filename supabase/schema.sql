@@ -474,8 +474,41 @@ begin
 end;
 $$;
 
+-- 清單（tags）改名/合併：DB 端原子更新，避免兩人同時編輯時前端整包讀改寫互相覆蓋。
+-- security invoker：沿用 items 的 RLS（限該趟成員可寫），毋須重驗成員身分。
+-- 去重用 unnest with ordinality + min(ord) 保留首次出現順序（首個 tag 決定 marker 圖示，不可打亂）。
+create or replace function rename_tag_across_trip(p_trip_id uuid, p_from text, p_to text)
+returns void
+language sql
+security invoker
+set search_path = public
+as $$
+  update items set tags = (
+    select coalesce(array_agg(elem order by ord), '{}')
+    from (
+      select elem, min(ord) as ord
+      from unnest(array_replace(tags, p_from, p_to)) with ordinality as u(elem, ord)
+      group by elem
+    ) dedup
+  )
+  where trip_id = p_trip_id and tags @> array[p_from];
+$$;
+
+-- 刪除清單：從所有含該 tag 的 items 移除（景點本身保留）
+create or replace function delete_tag_across_trip(p_trip_id uuid, p_tag text)
+returns void
+language sql
+security invoker
+set search_path = public
+as $$
+  update items set tags = array_remove(tags, p_tag)
+  where trip_id = p_trip_id and tags @> array[p_tag];
+$$;
+
 grant execute on function create_trip(text, text, date, date, double precision, double precision, text) to authenticated;
 grant execute on function join_trip_by_code(text) to authenticated;
+grant execute on function rename_tag_across_trip(uuid, text, text) to authenticated;
+grant execute on function delete_tag_across_trip(uuid, text) to authenticated;
 
 -- ----------------------------------------------------------------
 -- 5. Row Level Security

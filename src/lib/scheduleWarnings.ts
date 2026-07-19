@@ -58,11 +58,17 @@ export function computeDayWarnings(
           tzAdjust = tzOffsetMinutes(itz, atISO) - tzOffsetMinutes(ptz, atISO)
         }
         const prevDepHere = pEff.departure + tzAdjust // 上一站離開，換算到本站時區的牆鐘
-        if (eff.arrival < prevDepHere) {
+        // 跨午夜修正：上一站離開可能已跨日（>=1440），手填抵達只有 0–1439 的牆鐘值，
+        // 視為同一天（加上跨日位移）再比，避免誤報時間倒流（同 computeDaySchedule 規則）
+        let arrivalCmp = eff.arrival
+        if (arrivalCmp < prevDepHere && prevDepHere >= 1440) {
+          arrivalCmp += Math.floor(prevDepHere / 1440) * 1440
+        }
+        if (arrivalCmp < prevDepHere) {
           add(it.id, `抵達早於上一站離開（${formatMin(prevDepHere)}），時間倒流`)
         } else {
           const dur = transportByPair.get(`${prev.id}|${it.id}`)?.duration_min
-          if (dur != null && eff.arrival < prevDepHere + dur) {
+          if (dur != null && arrivalCmp < prevDepHere + dur) {
             add(it.id, `交通可能趕不上（最快約 ${formatMin(prevDepHere + dur)} 才到）`)
           }
         }

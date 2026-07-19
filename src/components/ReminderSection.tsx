@@ -11,6 +11,7 @@ import {
   type CreateReminderInput,
 } from '../lib/reminders'
 import { logActivity } from '../lib/activity'
+import { errMessage } from '../lib/errMessage'
 import { toInstantUTC } from '../lib/time'
 import { useTripRealtime } from '../lib/tripRealtime'
 import { DateTime } from 'luxon'
@@ -255,6 +256,7 @@ function AddReminderSheet({
   const [absTime, setAbsTime] = useState(baseDt.isValid ? baseDt.toFormat('HH:mm') : '')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // 選模板時自動切回「提前」模式並套用該模板預設偏移
   function handleTemplateChange(t: ReminderTemplate) {
@@ -289,10 +291,14 @@ function AddReminderSheet({
 
   // 提前模式選了自訂卻沒填有效數字 → 不可儲存
   const offsetInvalid = mode === 'offset' && customOffset && customMinutes <= 0
+  // 觸發時刻已過去 → 擋下：後端 cron 只查 fire_at<=now，過期提醒會被立即誤發
+  const firePast =
+    fireAtAdjusted != null && DateTime.fromISO(fireAtAdjusted, { zone: 'utc' }) <= DateTime.utc()
 
   async function handleSave() {
-    if (!fireAtAdjusted || offsetInvalid) return
+    if (!fireAtAdjusted || offsetInvalid || firePast) return
     setSaving(true)
+    setSaveError(null)
     try {
       const input: CreateReminderInput = {
         trip_id: tripId,
@@ -310,7 +316,7 @@ function AddReminderSheet({
       logActivity(tripId, meId, 'reminder_set', `為「${targetName}」設定了${templateInfo(template).label}`)
       onCreated()
     } catch (e) {
-      console.warn('[AddReminderSheet] 建立提醒失敗', e)
+      setSaveError(errMessage(e))
     } finally {
       setSaving(false)
     }
@@ -325,9 +331,11 @@ function AddReminderSheet({
 
   return (
     <Sheet onClose={onClose} stacked>
-      <div className="px-[22px] pb-[28px] pt-2">
+      {/* flex + min-h-0：欄位多，小螢幕（尤其鍵盤彈出）時中段可捲、儲存鈕不被推出畫面 */}
+      <div className="flex max-h-full flex-col px-[22px] pb-[28px] pt-2">
         <h3 className="text-[17px] font-bold text-ink">新增提醒</h3>
 
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {/* 模板選擇 */}
         <div className="mt-4 flex flex-wrap gap-2">
           {REMINDER_TEMPLATES.map((t) => (
@@ -444,6 +452,11 @@ function AddReminderSheet({
               <Icon name="bell" size={14} />
               將在 {fireDisplay} 提醒
             </p>
+            {firePast && (
+              <p className="mt-1 text-[12.5px] font-semibold text-danger">
+                這個時間已經過去，請往後調整才能儲存
+              </p>
+            )}
           </div>
         )}
 
@@ -458,11 +471,18 @@ function AddReminderSheet({
             className="mt-2 w-full rounded-lg border border-line bg-surface-2 px-[13px] py-[10px] text-[14px] text-ink outline-none focus:border-primary focus:bg-white"
           />
         </div>
+        </div>
+
+        {saveError && (
+          <div className="mt-2 rounded-md bg-warn-soft px-3 py-2 text-[13px] text-[#b9762a]">
+            {saveError}
+          </div>
+        )}
 
         {/* 儲存 */}
         <button
           type="button"
-          disabled={saving || !fireAtAdjusted || offsetInvalid}
+          disabled={saving || !fireAtAdjusted || offsetInvalid || firePast}
           onClick={() => void handleSave()}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-primary py-[14px] text-base font-bold text-white shadow-[0_6px_16px_rgba(122,108,240,0.35)] active:scale-[0.98] disabled:opacity-60"
         >

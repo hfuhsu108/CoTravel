@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { Day, Document, Item, TripMemberWithProfile } from '../../lib/types'
 import { displayName, type ItemPatch } from '../../lib/itinerary'
@@ -72,10 +72,20 @@ export default function BookmarkDetailSheet({
     setBusy(true)
     try {
       await onUpdate(patch)
+    } catch {
+      // 失敗已由 MapTab 錯誤浮層顯示；這裡吞掉避免 unhandled rejection
     } finally {
       setBusy(false)
     }
   }
+
+  // 備註靠 onBlur 存檔，但切分頁/關閉造成 unmount 不觸發 blur → cleanup 補存未儲存的備註
+  const notesFlushRef = useRef<() => void>(() => {})
+  notesFlushRef.current = () => {
+    const next = notes.trim() || null
+    if (next !== (item.notes ?? null)) void onUpdate({ notes: next }).catch(() => {})
+  }
+  useEffect(() => () => notesFlushRef.current(), [])
 
   function saveAlias() {
     const next = aliasDraft.trim()
@@ -275,7 +285,9 @@ export default function BookmarkDetailSheet({
             onClick={() => {
               if (window.confirm(`確定要移除「${displayName(item)}」的書籤嗎？`)) {
                 setBusy(true)
-                onRemove().finally(() => setBusy(false))
+                onRemove()
+                  .catch(() => {}) // 失敗已由 MapTab 錯誤浮層顯示
+                  .finally(() => setBusy(false))
               }
             }}
             className="flex flex-1 items-center justify-center gap-2 rounded-md py-[14px] text-base font-bold text-danger active:scale-[0.98] disabled:opacity-50"
@@ -302,6 +314,8 @@ export default function BookmarkDetailSheet({
                       try {
                         await onScheduleToDay(d.id)
                         setDayPickerOpen(false)
+                      } catch {
+                        // 失敗已由 MapTab 錯誤浮層顯示；day picker 維持開啟供重試
                       } finally {
                         setBusy(false)
                       }

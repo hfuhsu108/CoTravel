@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AreaCandidate, Day, Document, Item } from '../../../lib/types'
 import type { ItemPatch } from '../../../lib/itinerary'
 import Icon from '../../Icon'
@@ -35,6 +35,28 @@ export default function AreaDetail({
   onAddCandidate,
 }: AreaDetailProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
+  const [busy, setBusy] = useState(false)
+
+  // 防重入：存檔中鎖住所有寫入操作（比照 PlaceDetail 的 busy）
+  async function run(fn: () => Promise<void>) {
+    if (busy) return
+    setBusy(true)
+    try {
+      await fn()
+    } catch {
+      // 失敗已由 MapTab 錯誤浮層顯示
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 備註靠 onBlur 存檔，但切分頁/關閉造成 unmount 不觸發 blur → cleanup 補存未儲存的備註
+  const notesFlushRef = useRef<() => void>(() => {})
+  notesFlushRef.current = () => {
+    const next = notes.trim() || null
+    if (next !== (item.notes ?? null)) void onUpdate({ notes: next }).catch(() => {})
+  }
+  useEffect(() => () => notesFlushRef.current(), [])
 
   return (
     <>
@@ -76,9 +98,10 @@ export default function AreaDetail({
           >
             <button
               type="button"
-              onClick={() => void onToggleCandidate(c)}
+              disabled={busy}
+              onClick={() => void run(() => onToggleCandidate(c))}
               aria-label={c.chosen ? '取消選定' : '選定今天就去'}
-              className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] border-2 transition-colors"
+              className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] border-2 transition-colors disabled:opacity-60"
               style={{
                 background: c.chosen ? 'var(--primary)' : 'var(--surface)',
                 borderColor: c.chosen ? 'var(--primary)' : 'var(--line-strong)',
@@ -92,9 +115,10 @@ export default function AreaDetail({
             </span>
             <button
               type="button"
-              onClick={() => void onRemoveCandidate(c.id)}
+              disabled={busy}
+              onClick={() => void run(() => onRemoveCandidate(c.id))}
               aria-label="移除候選"
-              className="flex h-7 w-7 items-center justify-center text-ink-3 active:scale-90"
+              className="flex h-7 w-7 items-center justify-center text-ink-3 active:scale-90 disabled:opacity-60"
             >
               <Icon name="x" size={16} />
             </button>
@@ -114,7 +138,7 @@ export default function AreaDetail({
       <div className="my-4">
         <Eyebrow>清單</Eyebrow>
         <div className="mt-2">
-          <TagEditor tags={item.tags} onChange={(tags) => void onUpdate({ tags })} />
+          <TagEditor tags={item.tags} busy={busy} onChange={(tags) => void run(() => onUpdate({ tags }))} />
         </div>
       </div>
 
@@ -122,10 +146,11 @@ export default function AreaDetail({
         <Eyebrow>備註</Eyebrow>
         <textarea
           value={notes}
+          disabled={busy}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={() => {
             const next = notes.trim() || null
-            if (next !== (item.notes ?? null)) void onUpdate({ notes: next })
+            if (next !== (item.notes ?? null)) void run(() => onUpdate({ notes: next }))
           }}
           placeholder="例如：逛街＋找午餐，看哪間人少就進"
           rows={2}

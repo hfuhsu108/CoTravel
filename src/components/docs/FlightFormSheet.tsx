@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import { addItem, listDays, updateItem } from '../../lib/itinerary'
 import { upsertTransport, type FlightView } from '../../lib/transports'
@@ -96,9 +96,27 @@ export default function FlightFormSheet({
       ? spanMinutes(departLocal, departTz, arriveLocal, arriveTz)
       : null
   const flightMin = rawMin != null && rawMin >= 0 ? rawMin : null
+  // 換算成絕對時間後為負＝物理不可能，擋存檔。
+  // 注意不可直接比 arriveLocal < departLocal：跨換日線西向航班（當地抵達時刻早於出發）屬合法。
+  const negativeSpan = rawMin != null && rawMin < 0
 
   const canSubmit =
-    !busy && !!depAirport && !!arrAirport && !!departLocal && !!arriveLocal && !!departTz && !!arriveTz
+    !busy &&
+    !!depAirport &&
+    !!arrAirport &&
+    !!departLocal &&
+    !!arriveLocal &&
+    !!departTz &&
+    !!arriveTz &&
+    !negativeSpan
+
+  // 送出中途失敗（例如機票檔上傳逾時）重試時，複用前次已建立的機場 item，避免行程裡重複建點
+  const createdItemsRef = useRef<{
+    depId: string
+    arrId: string
+    depTz: string | null
+    arrTz: string | null
+  } | null>(null)
 
   async function handleSubmit() {
     if (!depAirport || !arrAirport || !departLocal || !arriveLocal) {
@@ -118,6 +136,14 @@ export default function FlightFormSheet({
         fromId = t.from_item_id
         toId = t.to_item_id
         // 出發機場：起飛＝離開時間；抵達機場：降落＝抵達時間
+        await updateItem(fromId, { departure_time: departLocal.slice(11, 16) })
+        await updateItem(toId, { scheduled_time: arriveLocal.slice(11, 16) })
+      } else if (createdItemsRef.current) {
+        // 前次送出已建好機場 item 但後續步驟失敗：複用並同步時間，不重複建點
+        fromId = createdItemsRef.current.depId
+        toId = createdItemsRef.current.arrId
+        depTz = createdItemsRef.current.depTz
+        arrTz = createdItemsRef.current.arrTz
         await updateItem(fromId, { departure_time: departLocal.slice(11, 16) })
         await updateItem(toId, { scheduled_time: arriveLocal.slice(11, 16) })
       } else {
@@ -159,6 +185,7 @@ export default function FlightFormSheet({
         // 以建立後 item 上實際存的時區為準（addItem 由座標自動推）
         depTz = depItem.timezone ?? departTz
         arrTz = arrItem.timezone ?? arriveTz
+        createdItemsRef.current = { depId: fromId, arrId: toId, depTz, arrTz }
       }
 
       const transport = await upsertTransport({
@@ -325,6 +352,12 @@ export default function FlightFormSheet({
               </div>
             )}
 
+            {negativeSpan && (
+              <div className="mb-[15px] rounded-lg bg-warn-soft px-[14px] py-[11px] text-[13px] font-bold text-[#b9762a]">
+                抵達時間早於出發時間（已按兩地時區換算），請確認日期與時間
+              </div>
+            )}
+
             <Field label="備註（登機門、座位、訂位代號…）">
               <input
                 value={notes}
@@ -372,6 +405,8 @@ export default function FlightFormSheet({
             onPick={(place) => {
               if (picking === 'dep') setDepAirport(place)
               else setArrAirport(place)
+              // 機場換了，前次失敗留下的 item 不可再複用
+              createdItemsRef.current = null
               setPicking(null)
             }}
           />

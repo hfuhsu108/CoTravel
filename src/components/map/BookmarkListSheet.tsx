@@ -198,6 +198,8 @@ function BookmarkRow({
     setBusy(true)
     try {
       await fn()
+    } catch {
+      // 失敗已由 MapTab 錯誤浮層顯示；這裡吞掉避免 unhandled rejection
     } finally {
       setBusy(false)
     }
@@ -273,7 +275,7 @@ function BookmarkRow({
         <button
           type="button"
           disabled={busy}
-          onClick={() => onRemove(item)}
+          onClick={() => void run(() => onRemove(item))}
           aria-label="刪除書籤"
           className="flex h-8 w-8 flex-none items-center justify-center text-ink-3 active:scale-90 disabled:opacity-50"
         >

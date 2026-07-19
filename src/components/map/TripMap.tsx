@@ -102,7 +102,10 @@ export default function TripMap({
         // 點到 Google POI：一律壓掉原生資訊窗。非圈區域模式時抓詳情開自家卡片；
         // 圈區域模式則讓 latLng 往下走（當作選區域中心）。
         if (placeId) e.stop()
-        if (!areaMode && placeId && placesLib) {
+        if (!areaMode && placeId) {
+          // places library 尚未就緒：忽略這次 POI 點擊。若放行到 onMapClick 會清空目前選取，
+          // 使用者看起來像「點了沒反應還把卡片關掉」。
+          if (!placesLib) return
           fetchPoiDetails(placesLib, placeId)
             .then(onPoiSelected)
             .catch((err) => onPoiError(errMessage(err)))

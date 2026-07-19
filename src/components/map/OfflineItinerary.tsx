@@ -114,7 +114,7 @@ export default function OfflineItinerary({
 
           <div className="flex-none px-4 pb-[10px]">
             <span className="inline-flex items-center gap-[6px] rounded-full bg-warn-soft px-[11px] py-[5px] text-[12.5px] font-bold text-[#b9762a]">
-              <Icon name="cloudoff" size={13} /> 離線模式：地圖需要網路，以下為已快取行程
+              <Icon name="cloudoff" size={13} /> 離線模式：以下為已快取行程（唯讀），地圖需網路
             </span>
           </div>
         </>
@@ -140,7 +140,9 @@ export default function OfflineItinerary({
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          // pointer-events-none：唯讀模式下卡片/候選勾選不吃點擊也不播按壓動畫，
+          // 與可互動版明確區隔（handler 全為 noop，看起來能點卻沒反應像當機）
+          <div className="pointer-events-none flex flex-col gap-2">
             {dayItems.map((it, idx) => {
               const next = dayItems[idx + 1]
               const hasCoord = (i: Item) => i.lat != null && i.lng != null

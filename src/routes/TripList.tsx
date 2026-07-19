@@ -126,8 +126,11 @@ export default function TripList() {
         </div>
         <button
           type="button"
-          onClick={() => !offlineMode && setSheet('profile')}
+          disabled={offlineMode}
+          onClick={() => setSheet('profile')}
           aria-label="個人檔案"
+          title={offlineMode ? '離線中，暫無法開啟個人檔案' : undefined}
+          className="disabled:opacity-50"
         >
           <Avatar name={meName} avatarUrl={meAvatar} size={38} online />
         </button>

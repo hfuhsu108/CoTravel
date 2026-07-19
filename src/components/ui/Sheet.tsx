@@ -22,8 +22,10 @@ export default function Sheet({ onClose, children, className = '', stacked = fal
 
   return (
     <>
+      {/* scrim 用 fixed 蓋滿視窗（含底部分頁列）：sheet 開啟時誤觸 nav 切路由會丟表單。
+          dialog 仍 absolute 定位於 relative 祖先，位置不變。 */}
       <div
-        className={`absolute inset-0 animate-fade bg-[rgba(28,20,52,0.42)] ${stacked ? 'z-[80]' : 'z-[70]'}`}
+        className={`fixed inset-0 animate-fade bg-[rgba(28,20,52,0.42)] ${stacked ? 'z-[80]' : 'z-[70]'}`}
         onClick={onClose}
         aria-hidden="true"
       />

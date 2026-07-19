@@ -101,7 +101,8 @@ export default function TripFormSheet({ mode, trip, onClose, onSaved }: TripForm
 
         {!created ? (
           <>
-            <div className="flex-1 overflow-y-auto px-[22px] pt-[18px]">
+            {/* min-h-0：flex 子層才能被壓縮而觸發捲動（見 gotcha-sheet-flex-scroll） */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pt-[18px]">
               <Field label="旅程名稱">
                 <input
                   value={name}

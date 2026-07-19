@@ -106,3 +106,31 @@ export async function removeTransport(id: string): Promise<void> {
   const { error } = await supabase.from('transports').delete().eq('id', id)
   if (error) throw error
 }
+
+export async function removeTransports(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase.from('transports').delete().in('id', ids)
+  if (error) throw error
+}
+
+// 重排／移動天之後，找出因「不再相鄰」而失效的交通段 id（供批次刪除）。
+// flight 是機票功能的資料錨點、custom 有手填備註與連結文件——皆保留不清，
+// 重新相鄰時可復用；殘留只是暫時看不到，屬刻意取捨。
+export function danglingTransportIds(items: Item[], transports: Transport[]): string[] {
+  const byDay = new Map<string, Item[]>()
+  for (const it of items) {
+    if (it.status !== 'scheduled' || !it.day_id) continue
+    const arr = byDay.get(it.day_id)
+    if (arr) arr.push(it)
+    else byDay.set(it.day_id, [it])
+  }
+  const adjacent = new Set<string>()
+  for (const arr of byDay.values()) {
+    arr.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    for (let i = 0; i + 1 < arr.length; i++) adjacent.add(`${arr[i].id}|${arr[i + 1].id}`)
+  }
+  return transports
+    .filter((t) => t.mode !== 'flight' && t.mode !== 'custom')
+    .filter((t) => !adjacent.has(`${t.from_item_id}|${t.to_item_id}`))
+    .map((t) => t.id)
+}

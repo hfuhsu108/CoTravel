@@ -68,6 +68,13 @@ export function computeDaySchedule(
       if (dur != null) arrival = prev.departure + dur + tzDiff(prev.tz, item.timezone)
     }
 
+    // 跨午夜修正：串接後抵達可能已跨日（>=1440），手填離開/抵達只有 0–1439 的牆鐘值。
+    // 把較小的手填值視為與跨日值同一天（加上跨日位移）再互補與串接，避免誤報「離開早於抵達」。
+    // 抬升後仍早於抵達者（如抵達 01:00、離開填 00:30）屬真實矛盾，照常進入警告。
+    if (departure != null && dManual != null && arrival != null && arrival >= 1440 && departure < arrival) {
+      departure += Math.floor(arrival / 1440) * 1440
+    }
+
     // 單站互補（含「未設定停留→預設 1 小時」）：
     // 有抵達無離開 → 離開 = 抵達 + (停留 ?? 60)；有離開無抵達 → 抵達 = 離開 − (停留 ?? 60)。
     if (arrival != null && departure == null) {
